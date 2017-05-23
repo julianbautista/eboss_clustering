@@ -9,9 +9,6 @@ from scipy.ndimage import gaussian_filter1d
 
 class Cosmo:
 
-    ap_qpm = 0.9878
-    at_qpm = 0.9790
-
     def __init__(self, z=0.0, name='challenge', norm_pk=1):
         self.get_matter_power_spectrum(z=z, name=name, norm_pk=norm_pk)
         self.get_correlation_function(update=1)
@@ -346,9 +343,6 @@ class Cosmo:
 
         at = (cosmo.D_A/cosmo.rdrag)/(cosmo_fid.D_A/cosmo_fid.rdrag)
         ap = (cosmo_fid.rdrag*cosmo_fid.hubble_z)/(cosmo.rdrag*cosmo.hubble_z)
-        #-- Kirkby et al 2013
-        #alpha = (ap+at)/2
-        #epsilon = (ap-at)/(ap+at)
         #-- Padmanabhan & White 2009
         alpha = at**(2./3.)*ap**(1./3)
         epsilon = (ap/at)**(1./3) - 1
