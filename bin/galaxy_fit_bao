@@ -1,0 +1,147 @@
+#!/usr/bin/env python
+
+import sys
+import argparse
+import os
+import numpy as N 
+
+from galaxy_bao_fitter import *
+from cf import Multipoles
+
+parser = argparse.ArgumentParser()
+
+parser.add_argument('-i', '--input', help='Input correlation function')
+parser.add_argument('-c', '--cov', help='Input covariance matrix')
+parser.add_argument('-o', '--output', help='Root for outputs')
+
+
+parser.add_argument('--rmin', help='Minimum separation', type=float, default=30.)
+parser.add_argument('--rmax', help='Maximum separation', type=float, default=200.)
+parser.add_argument('--fit_bb', help='Use broadband', \
+                    action='store_true', default=True)
+parser.add_argument('--fit_quad', help='Use quadrupole', \
+                    action='store_true', default=False)
+parser.add_argument('--fit_iso', help='Perform isotropic fit', \
+                    action='store_true', default=True)
+parser.add_argument('--minos', help='Compute error bars', \
+                    action='store_true', default=True)
+parser.add_argument('--scan', help='Compute chi2 surfaces', \
+                    action='store_true', default=False)
+parser.add_argument('--plotit', help='Plot best-fit model', \
+                    action='store_true', default=False)
+parser.add_argument('--cute', help='Input is in CUTE format', \
+                    action='store_true', default=False)
+parser.add_argument('--rebin_r', help='Rebin input correlation function (needs CUTE type input)', type=int)
+parser.add_argument('--shift_r', help='Shifts input correlation function (needs CUTE type inpute)', type=int)
+parser.add_argument('--post_rec', help='Fitting post-reconstruction (Sigma changes)', \
+                    action='store_true', default=False)
+
+
+args = parser.parse_args()
+
+rmin=args.rmin
+rmax=args.rmax
+rebin_r=args.rebin_r
+shift_r=args.shift_r
+fit_broadband=args.fit_bb
+fit_multipoles=args.fit_quad
+fit_iso=args.fit_iso
+plotit=args.plotit
+
+
+
+
+m = Multipoles(args.input, rebin_r=rebin_r, shift_r=shift_r, \
+               multipoles=(args.cute==False))
+rootout = args.output
+
+cov_file = args.cov
+
+i, j, r1, r2, coss = N.loadtxt(cov_file, unpack=1)
+coss = coss.reshape( (N.unique(i).size, N.unique(j).size))
+
+output = rootout+'-rmin%.1f-rmax%.1f'%(rmin, rmax)+'-nobb'*(1-fit_broadband)+ \
+         '-monoonly'*(1-fit_multipoles)+'-iso'*(fit_iso)
+output_base = os.path.basename(output)
+
+if args.post_rec:
+    fixes={'Sigma_par':5.5, 'Sigma_per':5.5, 'Sigma_s':0.}
+else:
+    fixes={'Sigma_par':9.5, 'Sigma_per':6., 'Sigma_s':2.}
+
+priors={'beta':[0.3, 0.1]}
+limits = {'aiso':[0.5, 1.5]} # {'ap':[0.5, 1.5], 'at':[0.5, 1.5]}
+
+if fit_multipoles:
+    quad = m.quad
+else:
+    quad = None
+    fixes['beta'] = 0.3
+    priors['bias'] = [1., 0.3]
+
+data = Data(m.r, m.mono, coss,  quad=quad, \
+            nmocks=1000, rmax=rmax, rmin=rmin)
+
+
+model = Model(fit_broadband=fit_broadband, fit_multipoles=fit_multipoles, \
+                name='challenge', norm_pk=1, fit_iso=fit_iso, no_peak=0)  
+model_nopeak = Model(fit_broadband=fit_broadband, fit_multipoles=fit_multipoles, \
+                name='challenge', norm_pk=1, fit_iso=fit_iso, no_peak=1)  
+
+chi2 = Chi2(data, model)
+chi2.fit(fixes=fixes, priors=priors, limits=limits) 
+chi2_nopeak = Chi2(data, model_nopeak)
+chi2_nopeak.fit(fixes=fixes, priors=priors, limits=limits)
+
+#-- best fit parameters
+chi2.export(output+'.pars')
+chi2_nopeak.export(output+'-nopeak.pars')
+
+if plotit:
+    P.figure()
+    chi2.plot_bestfit(label=r'$\chi^2 = %.2f$'%chi2.chi2min)
+    chi2_nopeak.plot_bestfit(model_only=1, \
+            label=r'$\chi^2_{\rm no \ peak} = %.2f$'%chi2_nopeak.chi2min)
+    P.legend(loc=0)
+    P.show()
+    #if save:
+    #    savefig('plots/bestfit-%s.pdf'%output_base, bbox_inches='tight')
+
+#-- minos (assymetric error bars)
+if args.minos:
+    minos = chi2.mig.minos(var='aiso')
+    fout = open(output+'.aiso.minos', 'w')
+    print>>fout, 'aiso', minos['aiso']['min'], minos['aiso']['lower'], \
+            minos['aiso']['upper'], minos['aiso']['is_valid']
+    fout.close()
+
+#-- doing chi2 scans
+if args.scan:
+    aiso_scan, chi2_scan = \
+            chi2.scan(par_name='aiso', par_nsteps=40)
+    aiso_scan_nopeak, chi2_scan_nopeak = \
+            chi2_nopeak.scan(par_name='aiso', par_nsteps=20)
+
+    #-- chi2 scans
+    fout = open(output+'.aiso.scan', 'w')
+    print>>fout, chi2.best_pars['aiso'], chi2.chi2min
+    for i in range(aiso_scan.size):
+        print>>fout, aiso_scan[i], chi2_scan[i]
+    fout.close()
+    print 'chi2 scan exported to:', output+'.aiso.scan'
+
+    fout = open(output+'-nopeak.aiso.scan', 'w')
+    print>>fout, chi2_nopeak.best_pars['aiso'], chi2_nopeak.chi2min
+    for i in range(aiso_scan_nopeak.size):
+        print>>fout, aiso_scan_nopeak[i], chi2_scan_nopeak[i]
+    fout.close()
+
+
+
+
+
+
+
+
+
+
