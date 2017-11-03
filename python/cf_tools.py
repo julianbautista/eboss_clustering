@@ -4,7 +4,7 @@ import os
 import copy 
 import glob
 
-#from scipy.optimize import minimize
+from scipy.optimize import minimize
 #from astropy.io import fits
 
 class Corr:
@@ -88,8 +88,10 @@ class Corr:
         tbhdu.writeto(fout+"-exp.fits", clobber=True)
 
     @staticmethod
-    def coadd(c1, c2):
+    def coadd_old(c1, c2):
         c = copy.deepcopy(c1)                
+
+        f = c2.wd/c1.wd
 
         c.dd = c1.dd+c2.dd
         c.dr = c1.dr+c2.dr
@@ -111,15 +113,50 @@ class Corr:
         dd_norm = 0.5*(c.wd**2-c.wd2)
         rr_norm = 0.5*(c.wr**2-c.wr2)
         dr_norm = c.wd*c.wr
-        ddd = c.dd/dd_norm
-        drr = c.rr/rr_norm
-        ddr = c.dr/dr_norm
-        c.cf = (ddd/drr-2*ddr/drr+1)
+        ddn = c.dd/dd_norm
+        rrn = c.rr/rr_norm
+        drn = c.dr/dr_norm
+        c.cf = (ddn/rrn-2*drn/rrn+1)
         c.dcf = (1+c.cf)*(edd+edr+err)
 
-        c.wp = c.get_wp()
-
         return c 
+
+    @staticmethod
+    def coadd(c1, c2):
+
+        c = copy.deepcopy(c1)
+
+        #-- ratio of (number of randoms)/(number of galaxies)
+        f = (c1.wr/c1.wd)/(c2.wr/c2.wd) 
+        print (c1.wr/c1.wd), (c2.wr/c2.wd), f
+
+        dd = c1.dd + c2.dd
+        dr = c1.dr + c2.dr*f
+        rr = c1.rr + c2.rr*f**2
+        wd = c1.wd + c2.wd
+        wd2 = c1.wd2 + c2.wd2
+        wr = c1.wr + c2.wr*f
+        wr2 = c1.wr2 + c2.wr2*f
+        norm_dd = 0.5*(wd**2-wd2)
+        norm_rr = 0.5*(wr**2-wr2)
+        norm_dr = wr*wd
+        
+        cf = dd/norm_dd/(rr/norm_rr) - 2*(dr/norm_dr)/(rr/norm_rr) + 1.
+
+        c.dd = dd
+        c.dr = dr
+        c.rr = rr
+        c.wd = wd
+        c.wd2 = wd2
+        c.wr = wr
+        c.wr2 = wr2
+        c.norm_dd = norm_dd
+        c.norm_rr = norm_rr
+        c.norm_dr = norm_dr
+        c.cf = cf
+        c.dcf = N.ones(cf.shape)
+
+        return c
 
     @staticmethod
     def coadd_north_south(root):
@@ -139,10 +176,10 @@ class Corr:
     @staticmethod
     def coadd_north_south_mocks(root, nmocks=1000):
         for r in range(1, nmocks+1):
-            cn = Corr(root%('North', 'North', r))
-            cs = Corr(root%('South', 'South', r%nmocks+1))
+            cn = Corr(root%('North', r))
+            cs = Corr(root%('South', r%nmocks+1))
             c = Corr.coadd(cn, cs)
-            cname = root%('Combined', 'Combined', r)
+            cname = root%('Combined', r)
             c.export(cname)
 
     @staticmethod
@@ -336,6 +373,9 @@ class Multipoles:
             self.rr = self.shape2d(self.rr)
             self.cf = self.shape2d(self.cf)
             self.dcf = self.shape2d(self.dcf)
+            dd_norm = 0.5*(self.wd**2-self.wd2)
+            rr_norm = 0.5*(self.wr**2-self.wr2)
+            dr_norm = self.wd*self.wr
             if rebin_r>1:
                 nr = (self.nr-rebin_r)/rebin_r
                 self.mu2d = N.mean(N.reshape(self.mu2d[shift_r:-rebin_r+shift_r], \
@@ -352,11 +392,14 @@ class Multipoles:
                 self.mu = N.unique(self.mu2d)
                 self.nr = self.r.size
                 self.nmu = self.mu.size
-                dd_norm = 0.5*(self.wd**2-self.wd2)
-                rr_norm = 0.5*(self.wr**2-self.wr2)
-                dr_norm = self.wd*self.wr
-                self.cf = self.dd/self.rr*rr_norm/dd_norm-2.*self.dr/self.rr*rr_norm/dr_norm+1.
-                self.dcf = (1+self.cf)*(1./N.sqrt(self.dd)+1./N.sqrt(self.dr)+1./N.sqrt(self.rr))
+                self.cf = self.dd/self.rr*rr_norm/dd_norm \
+                          - 2.*self.dr/self.rr*rr_norm/dr_norm + 1.
+                self.dcf = (1+self.cf)*(1./N.sqrt(self.dd)+\
+                                        1./N.sqrt(self.dr)+\
+                                        1./N.sqrt(self.rr))
+            self.norm_dd = dd_norm
+            self.norm_dr = dr_norm
+            self.norm_rr = rr_norm
             self.compute_multipoles()
 
     def read_multipoles(self, fin):
@@ -366,6 +409,23 @@ class Multipoles:
         else:
             self.r, self.mono, self.quad = data[:, 0], data[:, 1], data[:, 2]
 
+    def read_cov(self, cov_file):
+
+        i, j, r1, r2, coss = N.loadtxt(cov_file, unpack=1)
+        r = N.unique(r1)
+        nr = r.size
+        if (r != self.r).any():
+            print 'Warning: covariance matrix is uncompatible with multipoles'
+
+        ni = N.unique(i).size
+        coss = N.reshape(coss, (ni, ni))
+        dmono = N.sqrt(N.diag(coss)[:nr])
+        dquad = N.sqrt(N.diag(coss)[nr:])
+        self.dmono = dmono
+        self.dquad = dquad
+        self.coss = coss
+        self.corr = coss/N.sqrt( N.dot(N.diag(coss), N.diag(coss)) )
+        
     def shape2d(self, x):
         return N.reshape(x, (self.nr, self.nmu))
 
@@ -376,13 +436,15 @@ class Multipoles:
         dcf = self.dcf 
 
         self.mono = N.sum(cf*(dcf>0), axis=1)/N.sum(dcf>0., axis=1)
-        self.quad = N.sum(cf*0.5*(3*mu2d**2-1)*(dcf>0), axis=1)/N.sum(dcf>0., axis=1)*5.
+        self.quad = N.sum(cf*0.5*(3*mu2d**2-1)*(dcf>0), axis=1)/\
+                    N.sum(dcf>0., axis=1)*5.
 
     def fit_multipoles(self, mu_min=0., mu_max=1.0):
 
         def chi2(p, mu, cf, mu_max):
             w = (mu<mu_max)
-            model = p[0] + p[1]*0.5*(3*mu[w]**2-1) #+ p[2]*0.25*(35**mu**4-30*mu**2+3)
+            model = p[0] + p[1]*0.5*(3*mu[w]**2-1) \
+                    #+ p[2]*0.25*(35**mu**4-30*mu**2+3)
             return sum((cf[w]-model)**2)
 
         self.mono = N.zeros(self.r.size)
@@ -397,7 +459,8 @@ class Multipoles:
 
 
 
-    def plot(self, label=None, quad=0, errors=0, scale_r=2, alpha=1.0, color=None):
+    def plot(self, label=None, quad=0, errors=0, scale_r=2, \
+             alpha=1.0, color=None):
 
         r = self.r
         y1 = self.mono  * (1 + r**scale_r) 
@@ -410,13 +473,15 @@ class Multipoles:
         if quad:
             P.subplot(211)
         if errors:
-            P.errorbar(r, y1, dy1, fmt='o', label=label, color=color, alpha=alpha)
+            P.errorbar(r, y1, dy1, fmt='o', label=label, \
+                       color=color, alpha=alpha)
         else:
             P.plot(r, y1, label=label, color=color, alpha=alpha)
         if scale_r == 0:
             P.ylabel(r'$\xi_0$$')
         else:
-            P.ylabel(r'$r^{%d} \xi_0$ [$h^{%d}$ Mpc$^{%d}]$'%(scale_r, -scale_r, scale_r))
+            P.ylabel(r'$r^{%d} \xi_0$ [$h^{%d}$ Mpc$^{%d}]$'%\
+                     (scale_r, -scale_r, scale_r))
         if quad:
             P.subplot(212)
             if errors:
@@ -426,10 +491,12 @@ class Multipoles:
             if scale_r == 0:
                 P.ylabel(r'$\xi_2$$')
             else:
-                P.ylabel(r'$r^{%d} \xi_2$ [$h^{%d}$ Mpc$^{%d}]$'%(scale_r, -scale_r, scale_r))
+                P.ylabel(r'$r^{%d} \xi_2$ [$h^{%d}$ Mpc$^{%d}]$'%\
+                         (scale_r, -scale_r, scale_r))
         P.xlabel(r'$r$ [$h^{-1}$ Mpc]')
 
-    def plot_many(self, label=None, quad=0, errors=1, scale_r=2, alpha=1.0, color=None):
+    def plot_many(self, label=None, quad=0, errors=1, \
+                  scale_r=2, alpha=1.0, color=None):
 
         if not hasattr(self, 'nmocks'):
             print 'This is a single mock'
@@ -461,12 +528,17 @@ class Multipoles:
         fout.close()
 
     @staticmethod
-    def combine_mocks(root, multipoles=0, cov_with_quad=0, rebin_r=1, shift_r=0):
+    def combine_mocks(root, multipoles=0, cov_with_quad=0, \
+            rebin_r=1, shift_r=0):
 
         allm = glob.glob(root)
         nmocks = len(allm)
+        if nmocks < 1:
+            print 'No mocks found!'
+            return
 
-        cs = [Multipoles(m, multipoles=multipoles, rebin_r=rebin_r, shift_r=shift_r) for m in allm]
+        cs = [Multipoles(m, multipoles=multipoles, \
+              rebin_r=rebin_r, shift_r=shift_r) for m in allm]
     
         monos = N.array([c.mono for c in cs])
         quads = N.array([c.quad for c in cs])
@@ -497,8 +569,36 @@ class Multipoles:
 
         return c
 
+    @staticmethod
+    def plot_north_south_combined(root, multipoles=0, rebin_r=8):
+        mn = Multipoles(root%'North', \
+                multipoles=multipoles, rebin_r=rebin_r)
+        ms = Multipoles(root%'South', \
+                multipoles=multipoles, rebin_r=rebin_r)
+        m =  Multipoles(root%'Combined', \
+                multipoles=multipoles, rebin_r=rebin_r)
+        P.figure()
+        mn.plot(quad=1, label='North')
+        ms.plot(quad=1, label='South')
+        m.plot(quad=1, label='Combined')
+        P.subplot(211)
+        P.legend(loc=3, numpoints=1, fontsize=12)
+        P.draw()
 
+        
+    @staticmethod
+    def coadd(m1, m2):
+        m = copy.deepcopy(m1)
 
-    
+        #-- ratio of number of galaxy pairs
+        f = m2.norm_dd/m1.norm_dd
+        
+        m.dd = m1.dd/m1.norm_dd + f*m2.dd/m2.norm_dd
+        m.dr = m1.dr/m1.norm_dr + f*m2.dr/m2.norm_dr
+        m.rr = m1.rr/m1.norm_rr + f*m2.rr/m2.norm_rr
+        m.cf = m.dd/m.rr - 2*m.dr/m.rr + 1.
+        m.dcf = m.cf*0+1
+        m.compute_multipoles()
+        return m
 
 

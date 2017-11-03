@@ -7,6 +7,7 @@ import graphmask
 import copy
 import healpy as hp
 from subprocess import call
+from systematics import MultiFit
 
 from astropy.io import fits
 from astropy.coordinates import SkyCoord
@@ -84,7 +85,10 @@ class Nbar:
             self.nbins = zcen.size
     
     def plot(self, label=None, color=None, alpha=1.0):
-        P.plot(self.zcen, self.nbar, label=label, color=color, alpha=alpha)
+        P.plot(self.zcen, self.nbar/1e-4, label=label, color=color, alpha=alpha)
+        P.ylabel(r'$\bar{n}(z)$  $[10^{-4} h^3 \mathrm{Mpc}^{-3}]$', fontsize=16)
+        P.xlabel(r'$z$', fontsize=16)
+        P.tight_layout()
 
     def export(self, fout):
         fout = open(fout, 'w')
@@ -99,8 +103,8 @@ class Nbar:
 
 class Mask:
 
-    mask_dir = os.environ['MKESAMPLE_DIR']+'/geometry'
-    geometry_file = mask_dir+'/eboss_geometry_eboss0_eboss22'
+    mask_dir = ''
+    geometry_file = mask_dir + '' 
     vetos= {'collision':'collision_priority_mask_lrg_eboss_trimmed_v3.ply', \
             'bad_field':'badfield_mask_unphot_seeing_extinction_pixs8_dr12.ply',\
             'bright_star':'allsky_bright_star_mask_pix.ply',\
@@ -143,16 +147,15 @@ class Mask:
       
     @staticmethod
     def cut(mask, w):
-        newmask = copy.deepcopy(mask)
+        #newmask = copy.deepcopy(self)
         size = mask.weights.size
-        for f in newmask.__dict__.items():
+        for f in mask.__dict__.items():
             if hasattr(f[1], 'size') and f[1].size % size == 0:
-                newmask.__dict__[f[0]] = f[1][w]
-        newsize = newmask.weights.size
-        newmask.npoly = newsize
-        newmask.npixels = newsize
-        newmask.pixel_dict = newmask._create_pixel_dict()
-        return newmask 
+                mask.__dict__[f[0]] = f[1][w]
+        newsize = mask.weights.size
+        mask.npoly = newsize
+        mask.npixels = newsize
+        mask.pixel_dict = mask._create_pixel_dict()
 
 
     @staticmethod
@@ -202,7 +205,7 @@ class Mask:
         w &= w_in
 
         for i, name in enumerate(masknames):
-            print ' Applying veto with:', name
+            print ' Applying veto with:', Mask.vetos[name]
             print '   reading mask'
             mask = mangle.Mangle(Mask.mask_dir+'/'+Mask.vetos[name], \
                                  keep_ids=True)
@@ -280,9 +283,11 @@ class Mask:
         return new_mask, comps
 
     @staticmethod
-    def plot_completeness(mask='/uufs/chpc.utah.edu/common/home/sdss00/ebosswork/eboss/lss/catalogs/'+\
-                                '1.5/mask-lrg-N-eboss_v1.5_IRt.ply', cap='North', \
-                                save=0, vmin=0.5, vmax=1.0, ptitle=''):
+    def plot_completeness(\
+           mask='/uufs/chpc.utah.edu/common/home/sdss00/'+\
+                'ebosswork/eboss/lss/catalogs/'+\
+                '1.5/mask-lrg-N-eboss_v1.5_IRt.ply', \
+           cap='North', save=0, vmin=0.5, vmax=1.0, ptitle=''):
 
         from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
@@ -301,13 +306,17 @@ class Mask:
 
         fig.subplots_adjust(hspace=0)
         if cap=='North':
-            p, m = graphmask.plot_mangle_map(polys, bgcolor=None, facecolor=[.7,.7,.7], drawgrid=False, \
-                                        linewidth=.2, pointsper2pi=100, cenaz=191, cenel=55, width=106, \
-                                        height=46,projection='laea')
+            p, m = graphmask.plot_mangle_map(\
+                     polys, bgcolor=None, facecolor=[.7,.7,.7], \
+                     drawgrid=False, linewidth=.2, pointsper2pi=100, \
+                     cenaz=191, cenel=55, width=106, \
+                     height=46,projection='laea')
         elif cap=='South':
-            p, m = graphmask.plot_mangle_map(polys, bgcolor=None, facecolor=[.7,.7,.7], drawgrid=False,\
-                                        linewidth=.2, pointsper2pi=100, cenaz=5, cenel=15, width=80, \
-                                        height=48,projection='laea')
+            p, m = graphmask.plot_mangle_map(\
+                     polys, bgcolor=None, facecolor=[.7,.7,.7], \
+                     drawgrid=False, linewidth=.2, pointsper2pi=100, \
+                     cenaz=5, cenel=15, width=80, \
+                     height=48,projection='laea')
         else:
             print 'cap = North or South. Input:', cap
 
@@ -316,8 +325,9 @@ class Mask:
 
         w = polys.weights > 0
         azel, weight, midpoints = m.get_graphics_polygons(polys[w])
-        p = graphmask.draw_weighted_polygons(m.world2pix(azel), weight=weight, draw_colorbar=False, \
-                                            cmap=my_cmap, linewidth=0, vmin=vmin, vmax=vmax)
+        p = graphmask.draw_weighted_polygons(\
+                m.world2pix(azel), weight=weight, draw_colorbar=False, \
+                cmap=my_cmap, linewidth=0, vmin=vmin, vmax=vmax)
 
         P.gca().xaxis.set_label_coords(.5,-.06)
         P.gca().yaxis.set_label_coords(-.09,.5)
@@ -326,7 +336,8 @@ class Mask:
         P.title(ptitle)
 
         axins=inset_axes(P.gca(), width="40%", height="3%", loc=1)
-        P.colorbar(p, cax=axins, orientation='horizontal',ticks=N.linspace(vmin, vmax, 6))
+        P.colorbar(p, cax=axins, orientation='horizontal', \
+                   ticks=N.linspace(vmin, vmax, 6))
         if save:
             P.savefig(save, bbox_inches='tight')
         P.draw()
@@ -359,9 +370,11 @@ class Mask:
         seed_ransack: %d 
          '''%(nran, mask_file, seed_ransack) 
 
-        #-- run ransack to generate random points in sectors based on fiber completeness
+        #-- run ransack to generate random points in sectors 
+        #-- based on fiber completeness
         ransack_output = 'ransack.tmp'
-        cmd = 'ransack -c %d -r %d %s %s'%(seed_ransack, nran, mask_file, ransack_output) 
+        cmd = 'ransack -c %d -r %d %s %s' % \
+              (seed_ransack, nran, mask_file, ransack_output) 
 
         os.system(cmd)
         ra, dec, ipoly = N.loadtxt(ransack_output, unpack=1, skiprows=1)
@@ -480,6 +493,8 @@ class Utils:
 
 
 class Catalog(object):
+ 
+    collate = ''
 
     def __init__(self, cat=None, collate=0, unique=1):
         if collate:
@@ -509,11 +524,10 @@ class Catalog(object):
                 self.vetofraction = 1 
 
 
-    def read_collate(self, fitsfile=os.environ['EBOSSTILELIST_DIR']+\
-                     '/collate/eboss_collated_targets_eboss0_eboss22.fits', unique=1):
+    def read_collate(self, unique=0):
 
-        print 'Reading', fitsfile
-        a = fits.open(fitsfile)[1].data
+        print 'Reading', Catalog.collate 
+        a = fits.open(Catalog.collate)[1].data
     
         fields = [  'RA', 'DEC', 'EBOSS_TARGET0', 'EBOSS_TARGET1', \
                     'EBOSS_TARGET2', 'EBOSS_TARGET_ID', \
@@ -573,7 +587,8 @@ class Catalog(object):
             self.P0 = 10000.0
 
 
-        self.RA, self.DEC, self.Z, self.COMP, nz, self.WEIGHT_FKP = N.loadtxt(mockfile, unpack=True)
+        self.RA, self.DEC, self.Z, self.COMP, nz, self.WEIGHT_FKP = \
+                N.loadtxt(mockfile, unpack=True)
         self.size = self.RA.size
         self.WEIGHT_NOZ = N.ones(self.size)
         self.WEIGHT_CP = N.ones(self.size)
@@ -666,21 +681,17 @@ class Catalog(object):
         self.CLASS = N.zeros(self.size, dtype='15S')
         self.CHUNK_SPEC = N.zeros(self.size, dtype='15S')
 
-        #-- need to change this for qsos
-        if zcatalog is None:
-            zcatalog = fits.open(os.environ['MKESAMPLE_DIR']+'/inputFiles/'+\
-                                 'rm_spAll_join.fits')[1].data
-
-        spall = zcatalog
+        
+        spall = fits.open(zcatalog)[1].data
 
 
-        w = (spall.SPECPRIMARY == 1)
+        #w = (spall.SPECPRIMARY == 1)
         #if self.target == 'LRG':
         #    w = w & ((spall.EBOSS_TARGET1 & 2**1 > 0) | \
         #            (spall.EBOSS_TARGET0 & 2**2 > 0))
         #elif self.target == 'QSO':
         #    w = w & (spall.EBOSS_TARGET1 & 2**10 > 0) 
-        spall = spall[w]
+        #spall = spall[w]
 
 
         id2, id1, dist = Utils.spherematch(spall.RA, spall.DEC, self.RA, self.DEC)
@@ -695,7 +706,8 @@ class Catalog(object):
         self.XFOCAL[id1] = spall.XFOCAL[id2]
         self.YFOCAL[id1] = spall.YFOCAL[id2]
 
-        print 'Entries with different thing_id', sum(self.THING_ID_TARGETING[id1] != spall.THING_ID[id2])
+        print 'Entries with different thing_id', \
+                sum(self.THING_ID_TARGETING[id1] != spall.THING_ID[id2])
         self.THING_ID[id1] = spall.THING_ID[id2]
         self.CHUNK_SPEC[id1] = spall.CHUNK[id2]
         self.EBOSS_TARGET_ID_SPEC[id1] = spall.EBOSS_TARGET_ID[id2].astype(int)
@@ -774,7 +786,20 @@ class Catalog(object):
         if sect_plate:
             fsec.close()
 
-    def assign_plates_to_ra_dec(self, ra, dec, mask, seed=0):
+    def get_plates_per_pixel(self, mask):
+
+        w = (self.PLATE>0)
+        pix = mask.get_polyids(self.RA[w], self.DEC[w])
+        plates = self.PLATE[w]
+        plates_per_pixel = dict()
+        for px in N.unique(pix):
+            w = pix==px
+            ps = N.unique(plates[w])
+            plates_per_pixel[px] = ps
+        self.plates_per_pixel = plates_per_pixel
+
+
+    def assign_plates_to_ra_dec(self, ra, dec, mask, seed=0, use_pixels=0):
         ''' Assigns a plate number for an array of RA and DEC
 
             Inputs
@@ -794,13 +819,20 @@ class Catalog(object):
         if sum(mask.weights == 0)>0:
             print 'Warning: mask containing zero weight regions'
 
-        sectors = Mask.get_sectors(ra, dec, mask)
+        if use_pixels:
+            sectors = mask.get_polyids(ra, dec)
+            plates_dict = self.plates_per_pixel
+        else:
+            sectors = Mask.get_sectors(ra, dec, mask)
+            plates_dict = self.plates_per_sect
         plates = sectors*0
+
+
 
         for i in range(sectors.size): 
 
-            if sectors[i] in self.plates_per_sect:
-                splates = self.plates_per_sect[sectors[i]]
+            if sectors[i] in plates_dict:
+                splates = plates_dict[sectors[i]]
                 plates[i] = splates[N.random.randint(splates.size)] 
             else:
                 plates[i] = 0
@@ -811,9 +843,9 @@ class Catalog(object):
     def fiber_collision(self, apply_noz=1, dist_root=''):
 
         print ' '
-        print '========================================================================'
-        print '==== Finding fiber-collision pairs and correcting redshift failures ===='
-        print '========================================================================'
+        print '========================================'
+        print '==== Finding fiber-collision pairs  ===='
+        print '========================================'
         print ' '
 
         sectors = self.SECTOR
@@ -872,7 +904,7 @@ class Catalog(object):
             for pair in pairs:
                 imatch1 = imatch[pair[0]]
                 imatch2 = imatch[pair[1]]
-                print imatch1, imatch2
+                #print imatch1, imatch2
 
                 if imatch1 != 0 or imatch2 != 0:
                     pair_in_sector_tot += 1
@@ -903,15 +935,22 @@ class Catalog(object):
 
             if pair_in_sector_tot > 0: 
                 cp_pair_over_poss = pair_in_sector_good*1./pair_in_sector_tot
+            else: 
+                cp_pair_over_poss = 0
             if gal_in_sector_good+gal_in_sector_bad > 0: 
-                cp_gal_over_poss = gal_in_sector_good*1. / (gal_in_sector_good + gal_in_sector_bad)
+                cp_gal_over_poss = gal_in_sector_good*1. / \
+                                  (gal_in_sector_good + gal_in_sector_bad)
+            else:
+                cp_gal_over_poss = 0
             if plates.size == 1:
                 cp_pair_over_poss = 0.
                 cp_gal_over_poss = 0.
 
             print '  Close-pairs:', len(pairs)
-            print '     pairs numbers :', pair_in_sector_good, pair_in_sector_tot, cp_pair_over_poss 
-            print '     galaxy numbers:', gal_in_sector_good, gal_in_sector_bad, cp_gal_over_poss
+            print '     pairs numbers :', pair_in_sector_good, \
+                        pair_in_sector_tot, cp_pair_over_poss 
+            print '     galaxy numbers:', gal_in_sector_good,  \
+                        gal_in_sector_bad, cp_gal_over_poss
 
             all_z[w] = z
             all_imatch[w] = imatch
@@ -995,7 +1034,8 @@ class Catalog(object):
             #-- attribute same redshift and transfer weight_cp 
             imatch[wz] = 5
             z[wz] = z[wgood[id2]]
-            weight_noz[wgood[id2]] += weight_cp[wz] 
+            for i in range(id2.size):
+                weight_noz[wgood[id2[i]]] += weight_cp[wz][id1[i]] 
      
             all_z[ww] = z
             all_imatch[ww] = imatch
@@ -1028,7 +1068,9 @@ class Catalog(object):
         #-- denominator: all targets except legacy
         w_den = (imatch != 2) 
     
-        new_mask, fiber_comp = Mask.get_sector_completeness(mask, w_num, w_den, sectors, mincomp=mincomp)
+        new_mask, fiber_comp = \
+              Mask.get_sector_completeness(mask, w_num, w_den, \
+                                           sectors, mincomp=mincomp)
         return new_mask, fiber_comp
 
     def get_spectro_completeness(self, mask, mincomp=0.):
@@ -1040,7 +1082,8 @@ class Catalog(object):
         #-- denominator: confirmed, corrected failures and failures
         w_den = (imatch == 1) | (imatch == 5) | (imatch == 7) 
     
-        new_mask, z_comp = Mask.get_sector_completeness(mask, w_num, w_den, sectors, mincomp=mincomp)
+        new_mask, z_comp = Mask.get_sector_completeness(\
+                            mask, w_num, w_den, sectors, mincomp=mincomp)
         return new_mask, z_comp
 
     def get_tinker_completeness(self, mask, mincomp=0.):
@@ -1052,7 +1095,8 @@ class Catalog(object):
         #-- denominator: confirmed, corrected failures and failures
         w_den = (imatch!=2) & ( imatch != 4) & (imatch!= 9) #-- no legacy or stars or wrong class
     
-        new_mask, tinker_comp = Mask.get_sector_completeness(mask, w_num, w_den, sectors, mincomp=mincomp)
+        new_mask, tinker_comp = Mask.get_sector_completeness(\
+                                mask, w_num, w_den, sectors, mincomp=mincomp)
         return new_mask, tinker_comp
 
     def make_mask(self, mask=None, mincomp=0., export_dir=''):    
@@ -1139,14 +1183,18 @@ class Catalog(object):
 
     def create_randoms(self, nran, mask_root, do_veto=0, seed_ransack=323466458):
        
-        rancat = Mask.create_randoms_ransack(nran*self.wgalaxies, mask_root+'.ply', \
-                                        seed_ransack=seed_ransack )
+        rancat = Mask.create_randoms_ransack(\
+                    nran*self.wgalaxies, mask_root+'.ply', \
+                    seed_ransack=seed_ransack )
+
         rancat.target = self.target
         rancat.P0 = self.P0
         rancat.cap = self.cap
         rancat.version = self.version
         if do_veto:
             rancat.veto()
+            w = rancat.vetobits == 0
+            rancat.cut(w)
         else:
             rancat.vetofraction = 1.0
 
@@ -1174,9 +1222,15 @@ class Catalog(object):
         print 'Survey area:          ', self.mask_area, ' (sq. deg.)  '  
         print 'Survey area effective:', self.mask_area_eff, ' (sq. deg.)  '  
 
-    def compute_nbar(self, cosmo=None, zmin=0.0, zmax=3.5, dz=0.005, export='', cp=1, noz=1, syst=1):
+    def compute_nbar(self, cosmo=None, zmin=0.0, zmax=3.5, dz=0.005, \
+                        export='', cp=1, noz=1, syst=1):
         ''' Computes density as a function of redshift 
             and assigns redshifts for the random catalog objects 
+            
+
+            Returns
+            -------
+            Nbar object
 
         '''
 
@@ -1200,7 +1254,8 @@ class Catalog(object):
         weights = self.get_weights(cp=cp, noz=noz, fkp=0, syst=syst)
         P0 = self.P0
         
-        ww = (self.COMP > 0) & ( (self.IMATCH == 1) | (self.IMATCH == 2) | (self.IMATCH==101) | (self.IMATCH == 102) )
+        ww = (self.COMP > 0) & ( (self.IMATCH == 1) | \
+             (self.IMATCH == 2) | (self.IMATCH==101) | (self.IMATCH == 102) )
         z = self.Z[ww]
         weights = weights[ww]
         
@@ -1208,7 +1263,8 @@ class Catalog(object):
         cumul_weight = N.cumsum(weights)
 
         cnt_tot, zedges = N.histogram(z, bins=zedges, weights=weights)
-        mask_vol = mask_area_eff * cosmo.shell_vol(zlow, zhigh) /(4*N.pi * (180./N.pi)**2)
+        mask_vol = mask_area_eff * cosmo.shell_vol(zlow, zhigh) / \
+                   (4*N.pi * (180./N.pi)**2)
         nbar = cnt_tot / mask_vol
         wfkp = 1./(1+nbar*P0)
         veff = ((nbar*P0)/(1+nbar*P0))**2 * mask_vol
@@ -1326,6 +1382,18 @@ class Catalog(object):
     
         return weights
 
+    def plot(self, w=None, fmt='.', alpha=1, color=None, label=None):
+
+        if w is None:
+            w = N.ones(self.size)==1
+
+        ra = self.RA[w] -360*(self.RA[w]>300.)
+        dec = self.DEC[w]
+        P.plot(ra, dec, \
+                fmt, alpha=alpha, color=color,  label=label)
+
+    
+
     @staticmethod
     def merge_catalogs(c1, c2):
         ''' Merges two catalog objects into one, keeping only columns in common
@@ -1391,6 +1459,128 @@ class Survey:
 
 
 
+def main(outdir=None, collate=None, geometry=None, vetos_dir=None, zcatalog=None, \
+         version='test', target='LRG', cap='Both', comp='fibercomp',\
+         mincomp=0.5, do_veto=1, zmin=0.6, zmax=1.0,\
+         noz=0, unique=0, zwar_cut=1, nran=50, fc=1, OmegaM=0.31):
+    ''' Run catalog creation 
+
+        Examples:
+        - Produce catalogs similar to official ones
+        main(version='my1.5', comp='fibercomp', unique=0, zwar_cut=0)
+
+        - Produce catalogs a la CMASS, using fiber completeness, and fixing redshift
+        failures by increasing weight of closest neighbor
+        main(version='test7fcomp', comp='fibercomp')
+
+        - Produce catalogs a la Zhai, using a different completeness based on 
+        redshift failures
+        main(version='test7tink', comp='tink', noz=0)
+        
+
+
+    '''
+    
+
+    if cap=='Both':
+        for cap in ['North', 'South']:
+            main(outdir=outdir, collate=collate, geometry=geometry, \
+                 vetos_dir=vetos_dir, \
+                 zcatalog=zcatalog, version=version, target=target, cap=cap, \
+                 comp=comp,\
+                 do_veto=do_veto, zmin=zmin, zmax=zmax,\
+                 noz=noz, unique=unique, zwar_cut=zwar_cut, nran=nran, fc=fc,\
+                 OmegaM=OmegaM)
+        return 
+
+    Mask.mask_dir = vetos_dir
+    Mask.geometry_file = geometry
+    Catalog.collate = collate
+
+    outdir = os.path.join(outdir, version)
+    try: 
+        os.makedirs(outdir)
+    except:
+        pass
+
+    #log_file = '%s/log-%s-%s-%s.txt'%(outdir, version, target, cap)
+    dist_root = '%s/dist-%s-%s-%s.txt'%(outdir, version, target, cap)
+    sect_plate = '%s/sectplate-%s-%s-%s.txt'%(outdir, version, target, cap)
+    mask_root = '%s/mask-%s-%s-%s'%(outdir, version, target, cap)
+    nbar_file = '%s/nbar-%s-%s-%s.dat'%(outdir, version, target, cap)
+    syst_root = '%s/syst-%s-%s-%s'%(outdir, version, target, cap)
+    cat_dat_file = '%s/ebosscat-%s-%s-%s.dat.fits'%(outdir, version, target, cap)
+    cat_ran_file = '%s/ebosscat-%s-%s-%s.ran.fits'%(outdir, version, target, cap)
+
+
+    if fc:
+        #-- read info from collate file
+        cat = Catalog(collate=1, unique=0)
+        cat.version = version
+        cat.outdir = outdir
+
+        #-- cutting chunk 20 by hand now
+        w = (cat.CHUNK!=20)
+        cat.cut(w)
+
+        #-- select north or south
+        cat.select_galactic_cap(cap)
+     
+        #-- select type of target : lrgs or qsos
+        cat.select_targets(target)
+
+        #-- apply veto masks
+        if do_veto:
+            cat.veto()
+            cat.cut(cat.vetobits==0)
+
+        #-- match to spectro redshifts
+        cat.match_with_redshifts(zcatalog=zcatalog, zwar_cut=zwar_cut)
+
+        #-- find plates in sectors
+        cat.get_plates_per_sector(sect_plate=sect_plate)
+
+        #-- find fiber collisions
+        cat.fiber_collision(apply_noz=noz, dist_root=dist_root)
+        cat.export(cat_dat_file+'.temp_fc')
+    else: 
+        cat = Catalog(cat_dat_file+'.temp_fc')
+
+    #-- fill mask weights with many completeness definitions
+    cat.make_mask(mincomp=mincomp, export_dir=outdir) 
+
+    #-- select final targets with good redshifts 
+    cat.trim_catalog(cp=1, noz=noz, comp=comp)
+   
+    #-- build angular random catalog  
+    mask_root = mask_root.replace('mask', comp) 
+    rancat = cat.create_randoms(nran, mask_root, do_veto=do_veto, seed_ransack=323466458 )
+
+    #-- compute total effective area in sq degrees (input for compute_nbar)
+    mask = Mask.read_mangle_mask(mask_root)
+    cat.compute_area(rancat, mask)
+
+    #-- compute nbar, fkp weights and attribute redshifts to randoms
+    cosmo = Cosmo(OmegaM=OmegaM)
+    nbar = cat.compute_nbar(noz=noz, cosmo=cosmo) 
+    nbar.export(nbar_file)
+
+    cat.assign_random_redshifts(rancat, nbar, noz=noz, seed=323466458) 
+
+    cat.assign_fkp_weights(nbar)
+    rancat.assign_fkp_weights(nbar)
+
+    #-- compute systematic weights
+    if target=='LRG':
+        MultiFit.LRGs_zbins(cat, rancat, zs=[0.6, 1.0], \
+             nbins=10, plotit=0, plotroot=syst_root, cp=1, noz=noz, fkp=1)
+        #MultiFit.LRGs_zbins(cat, rancat, zs=[0.6, 0.67, 0.74, 0.81, 1.0], \
+        #     nbins=10, plotit=0, plotroot=syst_root, cp=1, noz=noz, fkp=1)
+
+
+    #-- export catalogs to fits files
+    cat.export(cat_dat_file, cosmo=cosmo)
+    rancat.export(cat_ran_file, cosmo=cosmo)
 
 
 

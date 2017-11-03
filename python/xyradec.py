@@ -4,7 +4,7 @@ import pylab as P
 import os
 import sys
 from ebosscat import Catalog, Mask
-from pbs import queue
+#from pbs import queue
 
 
 class xytrans:
@@ -34,8 +34,10 @@ class xytrans:
         return sum((newpos-pos)**2)/(pos.size-6)
 
     def fit_xy(self):
-        self.res_x = minimize(self.chi2, N.zeros(6), args=(self.ra, self.dec, self.x), tol=0.1)
-        self.res_y = minimize(self.chi2, N.zeros(6), args=(self.ra, self.dec, self.y), tol=0.1)
+        self.res_x = minimize(self.chi2, N.zeros(6), \
+                              args=(self.ra, self.dec, self.x), tol=0.1)
+        self.res_y = minimize(self.chi2, N.zeros(6), \
+                              args=(self.ra, self.dec, self.y), tol=0.1)
         self.cx = self.res_x['x']
         self.cy = self.res_y['x']
 
@@ -124,13 +126,35 @@ def assign_plates_and_xy(cat, ran, mask):
 
     '''
 
-    maskcut = Mask.cut(mask, mask.weights>0)
+    maskcut = mask[mask.weights>0]
 
     cat.get_plates_per_sector()
     ran.SECTOR, ran.PLATE = cat.assign_plates_to_ra_dec(ran.RA, ran.DEC, maskcut)
     
-    xys = xytrans.read_fits('xyradec_v5_10_0.txt')
+    xys = xytrans.read_fits(os.environ['CLUSTERING_DIR']+'/xyradec_v5_10_0.txt')
     ran.XFOCAL, ran.YFOCAL = xytrans.get_xy(ran.RA, ran.DEC, ran.PLATE, xys)
 
 
+    #-- hack for bad sectors
+    dist = N.sqrt(ran.XFOCAL**2+ran.YFOCAL**2)
+    w = (dist>326.5)
+    if sum(w)>0:
+        print sum(w), 'galaxies outside plates, distance =', dist[w].min()
+        bad_sectors = N.unique(ran.SECTOR[w])
+        print 'Sectors where this happens: ', bad_sectors
+
+    return
+
+    wr = N.ones(ran.size)==1
+    wd = N.ones(cat.size)==1
+    wm = N.ones(mask.sector.size)==1
+    for sec in bad_sectors:
+        wr &= (ran.SECTOR!=sec)
+        wd &= (cat.SECTOR!=sec)
+        wm &= (mask.sector!=sec)
+
+    print '%.3f of the footprint removed'%(1 - sum(wr)*1./ran.size)
+    cat.cut(wd)
+    ran.cut(wr)
+    mask = Mask.cut(mask, wm)
 

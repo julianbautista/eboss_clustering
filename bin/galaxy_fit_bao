@@ -6,106 +6,136 @@ import os
 import numpy as N 
 
 from galaxy_bao_fitter import *
-from cf import Multipoles
+from cf_tools import Multipoles
 
 parser = argparse.ArgumentParser()
 
 parser.add_argument('-i', '--input', help='Input correlation function')
 parser.add_argument('-c', '--cov', help='Input covariance matrix')
 parser.add_argument('-o', '--output', help='Root for outputs')
+parser.add_argument('--nmocks', help='Number of mocks used to compute covariance matrix', type=int)
 
-
+parser.add_argument('--z', help='Redshift of power spectrum', \
+                    type=float, default=0.71)
 parser.add_argument('--rmin', help='Minimum separation', type=float, default=30.)
-parser.add_argument('--rmax', help='Maximum separation', type=float, default=200.)
+parser.add_argument('--rmax', help='Maximum separation', type=float, default=180.)
 parser.add_argument('--fit_bb', help='Use broadband', \
-                    action='store_true', default=True)
+                    action='store_true', default=False)
+parser.add_argument('--fit_nopeak', help='Perform a fit without bao peak', \
+                    action='store_true', default=False)
 parser.add_argument('--fit_quad', help='Use quadrupole', \
                     action='store_true', default=False)
 parser.add_argument('--fit_iso', help='Perform isotropic fit', \
-                    action='store_true', default=True)
+                    action='store_true', default=False)
 parser.add_argument('--minos', help='Compute error bars', \
-                    action='store_true', default=True)
+                    action='store_true', default=False)
 parser.add_argument('--scan', help='Compute chi2 surfaces', \
                     action='store_true', default=False)
 parser.add_argument('--plotit', help='Plot best-fit model', \
                     action='store_true', default=False)
 parser.add_argument('--cute', help='Input is in CUTE format', \
                     action='store_true', default=False)
-parser.add_argument('--rebin_r', help='Rebin input correlation function (needs CUTE type input)', type=int)
-parser.add_argument('--shift_r', help='Shifts input correlation function (needs CUTE type inpute)', type=int)
-parser.add_argument('--post_rec', help='Fitting post-reconstruction (Sigma changes)', \
-                    action='store_true', default=False)
-
+parser.add_argument('--rebin_r', \
+    help='Rebin input correlation function (needs CUTE type input)', type=int)
+parser.add_argument('--shift_r', \
+    help='Shifts input correlation function (needs CUTE type input)', \
+    type=int, default=0)
+parser.add_argument('--post_rec', \
+    help='Fitting post-reconstruction (Sigma changes)', \
+    action='store_true', default=False)
+parser.add_argument('--fixes', nargs='+', \
+    help='Set fixed parameters. Usage: parameter1 value1 parameter2 value2')
+parser.add_argument('--limits', nargs='+', \
+    help='Set limits of  parameters. Usage: parameter1 lower1 upper1 parameter2 lower2 upper2 ...')
+parser.add_argument('--priors', nargs='+', \
+    help='Set priors on parameters. Usage: parameter1 mean1 sigma1 parameter2 mean2 sigma2')
 
 args = parser.parse_args()
 
+print args
+
+z=args.z
 rmin=args.rmin
 rmax=args.rmax
 rebin_r=args.rebin_r
 shift_r=args.shift_r
+fit_nopeak=args.fit_nopeak
 fit_broadband=args.fit_bb
-fit_multipoles=args.fit_quad
+fit_quad=args.fit_quad
 fit_iso=args.fit_iso
 plotit=args.plotit
-
+nmocks=args.nmocks
+fixes=args.fixes
+limits=args.limits
+priors=args.priors
 
 
 
 m = Multipoles(args.input, rebin_r=rebin_r, shift_r=shift_r, \
                multipoles=(args.cute==False))
-rootout = args.output
 
-cov_file = args.cov
-
-i, j, r1, r2, coss = N.loadtxt(cov_file, unpack=1)
+i, j, r1, r2, coss = N.loadtxt(args.cov, unpack=1)
 coss = coss.reshape( (N.unique(i).size, N.unique(j).size))
 
-output = rootout+'-rmin%.1f-rmax%.1f'%(rmin, rmax)+'-nobb'*(1-fit_broadband)+ \
-         '-monoonly'*(1-fit_multipoles)+'-iso'*(fit_iso)
+output = args.output+\
+        '-rmin%.1f-rmax%.1f'%(rmin, rmax)+\
+        '-nobb'*(1-fit_broadband)+ \
+        '-monoonly'*(1-fit_quad)+\
+        '-iso'*(fit_iso)
 output_base = os.path.basename(output)
+
+if fixes:
+    fixes_dict = {}
+    for i in range(0, len(fixes), 2):
+        fixes_dict[fixes[i]] = float(fixes[i+1])
+    fixes=fixes_dict
+
+if priors:
+    priors_dict = {}
+    for i in range(0, len(priors), 2):
+        priors_dict[priors[i]] = float(priors[i+1])
+    priors = prios_dict
+
+if limits:
+    limits_dict = {}
+    for i in range(0, len(limits), 3):
+        limits_dict[limits[i]] = [float(limits[i+1]), float(limits[i+2])]
+    limits = limits_dict
 
 if args.post_rec:
     fixes={'Sigma_par':5.5, 'Sigma_per':5.5, 'Sigma_s':0.}
-else:
-    fixes={'Sigma_par':9.5, 'Sigma_per':6., 'Sigma_s':2.}
+#else:
+#    fixes={'Sigma_par':9.5, 'Sigma_per':6., 'Sigma_s':2.}
 
-priors={'beta':[0.3, 0.1]}
-limits = {'aiso':[0.5, 1.5]} # {'ap':[0.5, 1.5], 'at':[0.5, 1.5]}
+#priors={'beta':[0.3, 0.1]}
+#limits = {'aiso':[0.5, 1.5]} # {'ap':[0.5, 1.5], 'at':[0.5, 1.5]}
 
-if fit_multipoles:
+if fit_quad:
     quad = m.quad
-else:
-    quad = None
-    fixes['beta'] = 0.3
-    priors['bias'] = [1., 0.3]
+#else:
+#    quad = None
+#    fixes['beta'] = 0.3
+#    priors['bias'] = [1., 0.3]
 
 data = Data(m.r, m.mono, coss,  quad=quad, \
-            nmocks=1000, rmax=rmax, rmin=rmin)
+            nmocks=nmocks, rmax=rmax, rmin=rmin)
 
 
-model = Model(fit_broadband=fit_broadband, fit_multipoles=fit_multipoles, \
-                name='challenge', norm_pk=1, fit_iso=fit_iso, no_peak=0)  
-model_nopeak = Model(fit_broadband=fit_broadband, fit_multipoles=fit_multipoles, \
-                name='challenge', norm_pk=1, fit_iso=fit_iso, no_peak=1)  
-
+model = Model(fit_broadband=fit_broadband, fit_multipoles=fit_quad, \
+                name='challenge', norm_pk=1, z=z, fit_iso=fit_iso, no_peak=0)  
 chi2 = Chi2(data, model)
 chi2.fit(fixes=fixes, priors=priors, limits=limits) 
-chi2_nopeak = Chi2(data, model_nopeak)
-chi2_nopeak.fit(fixes=fixes, priors=priors, limits=limits)
-
-#-- best fit parameters
 chi2.export(output+'.pars')
-chi2_nopeak.export(output+'-nopeak.pars')
 
-if plotit:
-    P.figure()
-    chi2.plot_bestfit(label=r'$\chi^2 = %.2f$'%chi2.chi2min)
-    chi2_nopeak.plot_bestfit(model_only=1, \
-            label=r'$\chi^2_{\rm no \ peak} = %.2f$'%chi2_nopeak.chi2min)
-    P.legend(loc=0)
-    P.show()
-    #if save:
-    #    savefig('plots/bestfit-%s.pdf'%output_base, bbox_inches='tight')
+if fit_nopeak:
+    model_nopeak = Model(fit_broadband=fit_broadband, \
+                         fit_multipoles=fit_quad, \
+                         name='challenge', norm_pk=1, \
+                         z=z, fit_iso=fit_iso, no_peak=1)  
+    chi2_nopeak = Chi2(data, model_nopeak)
+    chi2_nopeak.fit(fixes=fixes, priors=priors, limits=limits)
+    chi2_nopeak.export(output+'-nopeak.pars')
+
 
 #-- minos (assymetric error bars)
 if args.minos:
@@ -137,6 +167,16 @@ if args.scan:
     fout.close()
 
 
+if plotit:
+    P.figure()
+    chi2.plot_bestfit(label=r'$\chi^2 = %.2f$'%chi2.chi2min)
+    if fit_nopeak:
+        chi2_nopeak.plot_bestfit(model_only=1, \
+                label=r'$\chi^2_{\rm no \ peak} = %.2f$'%chi2_nopeak.chi2min)
+    P.legend(loc=0)
+    P.show()
+    #if save:
+    #    savefig('plots/bestfit-%s.pdf'%output_base, bbox_inches='tight')
 
 
 

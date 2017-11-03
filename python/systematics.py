@@ -22,16 +22,19 @@ class MultiFit:
         self.dec_data=dec
         self.weights_data = weights
         self.pix_data = self.make_healmap(ra, dec, weights) 
+        print 'Number of galaxies', ra.size
+        print 'Weight of galaxies', sum(weights)
 
     def read_randoms(self, ra, dec, weights):
         self.ra_rand=ra
         self.dec_rand=dec
         self.weights_rand=weights
         self.pix_rand = self.make_healmap(ra, dec, weights) 
+        print 'Number of randoms', ra.size
+        print 'Weight of randoms', sum(weights)
 
     def read_systematic_maps_fits(self, nside=256, index=N.array([0, 6]), \
-            infits=os.environ['MKESAMPLE_DIR']+\
-            '/inputFiles/systematic_maps_256nest.fits'):
+            infits=os.environ['EBOSS_CLUSTERING_DIR']+'/etc/systematic_maps_256nest.fits'):
         ''' read FITS file containing all healpix maps
                  
             nside: integer
@@ -322,7 +325,8 @@ class MultiFit:
         print '     chi2_null = %.3f/%d = %.3f'%\
                     (chi2_null, (nsyst*nbins), chi2_null/(nsyst*nbins))
         print '     chi2_fit  = %.3f/(%d-%d) = %.3f'%\
-                    (chi2_fit, (nsyst*nbins), pars1.size, chi2_fit/(nsyst*nbins-pars1.size))
+                    (chi2_fit, (nsyst*nbins), pars1.size, \
+                     chi2_fit/(nsyst*nbins-pars1.size))
 
         self.pars1 = pars1
         self.ndata = nsyst*nbins
@@ -423,8 +427,12 @@ class MultiFit:
             Parameters:
             cat:  data Catalog object
             ran: random Catalog object
-            cp, noz, fkp: 1 or 0. Defines which weights are used in the fits
+            zs: array containing the edges of the redshift bins. E.g. zs=[0.6, 1.0]
             nbins: integer with number of bins per systematic map
+            cp, noz, fkp: 1 or 0. Defines which weights are used in the fits
+            plotit: 1 or 0, if you want to plot the regression result
+            plotroot: root (no extension) of filename if you want to save these plots
+            
         '''
 
         cat.WEIGHT_SYSTOT=N.ones(cat.size)
