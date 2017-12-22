@@ -131,7 +131,7 @@ def assign_plates_and_xy(cat, ran, mask):
     cat.get_plates_per_sector()
     ran.SECTOR, ran.PLATE = cat.assign_plates_to_ra_dec(ran.RA, ran.DEC, maskcut)
     
-    xys = xytrans.read_fits(os.environ['CLUSTERING_DIR']+'/xyradec_v5_10_0.txt')
+    xys = xytrans.read_fits(os.environ['EBOSS_CLUSTERING_DIR']+'/etc/xyradec_v5_10_0.txt')
     ran.XFOCAL, ran.YFOCAL = xytrans.get_xy(ran.RA, ran.DEC, ran.PLATE, xys)
 
 

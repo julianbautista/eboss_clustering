@@ -424,7 +424,7 @@ class Multipoles:
         self.dmono = dmono
         self.dquad = dquad
         self.coss = coss
-        self.corr = coss/N.sqrt( N.dot(N.diag(coss), N.diag(coss)) )
+        self.corr = coss/N.sqrt( N.outer(N.diag(coss), N.diag(coss)) )
         
     def shape2d(self, x):
         return N.reshape(x, (self.nr, self.nmu))

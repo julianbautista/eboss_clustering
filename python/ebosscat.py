@@ -37,6 +37,10 @@ class Cosmo:
     def get_comoving_distance(self, z):
         return N.interp(z, self.ztab, self.rtab)
 
+    def get_redshift(self, r):
+        return N.interp(r, self.rtab, self.ztab)
+
+
     #-- comoving spherical volume between zmin and zman in (Mpc/h)**3
     def shell_vol(self, zmin, zmax):
         rmin = self.get_comoving_distance(zmin)
@@ -89,6 +93,18 @@ class Nbar:
         P.ylabel(r'$\bar{n}(z)$  $[10^{-4} h^3 \mathrm{Mpc}^{-3}]$', fontsize=16)
         P.xlabel(r'$z$', fontsize=16)
         P.tight_layout()
+
+    def compute_effective_volume(self, P0=10000., cosmo=None, \
+                                 zmin=0.6, zmax=1.0):
+        if cosmo is None:
+            cosmo = Cosmo()
+
+        mask_vol = self.mask_area_eff * cosmo.shell_vol(self.zlow, self.zhigh)\
+                   / (4*N.pi*(180./N.pi)**2)
+        veff = ((self.nbar*P0)/(1+self.nbar*P0))**2*mask_vol
+        w = (self.zcen>=zmin)&(self.zcen<=zmax)
+        veff_tot = sum(veff[w])
+        return veff_tot 
 
     def export(self, fout):
         fout = open(fout, 'w')
@@ -496,7 +512,7 @@ class Catalog(object):
  
     collate = ''
 
-    def __init__(self, cat=None, collate=0, unique=1):
+    def __init__(self, cat=None, collate=0, unique=0):
         if collate:
             self.read_collate(unique=unique)
 
@@ -654,8 +670,16 @@ class Catalog(object):
             return 0
 
         w, bits = Mask.run_vetos(self.RA, self.DEC, masknames=masknames)
-        self.vetofraction = N.sum(w)*1./w.size
+        #self.vetofraction = N.sum(w)*1./w.size
         self.vetobits = bits
+        
+        if self.target=='LRG' and self.cap=='North':
+            #-- Cut problematic region for NGC
+            wo = abs(self.DEC-40.55)>0.05
+            print 'Inside overlap region', sum(~wo)
+            self.vetobits[~wo] = 2**10
+            #self.cut(wo)
+
         #self.cut(w)
  
 
@@ -694,7 +718,8 @@ class Catalog(object):
         #spall = spall[w]
 
 
-        id2, id1, dist = Utils.spherematch(spall.RA, spall.DEC, self.RA, self.DEC)
+        id2, id1, dist = Utils.spherematch(spall.RA, spall.DEC, \
+                                           self.RA, self.DEC)
 
         print 'Entries in catalog: ', self.size
         print 'Entries in catalog with spectro info:', id1.size
@@ -872,7 +897,7 @@ class Catalog(object):
 
         print 'Solving fiber collisions in ', unique_sectors.size, 'sectors' 
         for i, sect in enumerate(unique_sectors):
-            w = (sectors == sect) & (all_imatch != 2)
+            w = (sectors == sect) & (all_imatch != 2) & (self.vetobits == 0)
 
             plates = N.unique(self.PLATE[w])
 
@@ -966,7 +991,7 @@ class Catalog(object):
             #-- now look for LEGACY close pairs in this sector.
             #-- remove some according to probability cp_gal_over_poss
 
-            ww = (sectors == sect) 
+            ww = (sectors == sect) & (self.vetobits==0)
             imatch = all_imatch[ww]
             z = all_z[ww]
             weight_cp = all_weight_cp[ww]
@@ -1192,9 +1217,11 @@ class Catalog(object):
         rancat.cap = self.cap
         rancat.version = self.version
         if do_veto:
+            ransize_before = rancat.size*1.
             rancat.veto()
-            w = rancat.vetobits == 0
-            rancat.cut(w)
+            rancat.cut(rancat.vetobits==0)
+            ransize_after = rancat.size*1.
+            rancat.vetofraction = ransize_after/ransize_before
         else:
             rancat.vetofraction = 1.0
 
@@ -1529,10 +1556,14 @@ def main(outdir=None, collate=None, geometry=None, vetos_dir=None, zcatalog=None
         #-- select type of target : lrgs or qsos
         cat.select_targets(target)
 
+        cat.remove_duplicates()
+
         #-- apply veto masks
         if do_veto:
             cat.veto()
-            cat.cut(cat.vetobits==0)
+            #cat.cut(cat.vetobits==0)
+
+        cat.export(cat_dat_file+'.temp_veto')
 
         #-- match to spectro redshifts
         cat.match_with_redshifts(zcatalog=zcatalog, zwar_cut=zwar_cut)

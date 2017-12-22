@@ -32,8 +32,12 @@ class Cosmo:
                                     omch2=0.11963, \
                                     YHe=0.24,nnu=3.04,  mnu=0, \
                                     TCMB=2.7250, num_massive_neutrinos=0)
-                pars.InitPower.set_params(As=2.03e-09, ns=0.97)
-        
+                pars.InitPower.set_params(As=2.3e-09, ns=0.97)
+            elif name == 'planck':
+                pars.set_cosmology(H0=67.31, ombh2=0.02222, \
+                                   omch2=0.1197, \
+                                   YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
+                pars.InitPower.set_params(As=2.198e-09, ns=0.9655)
 
         pars.set_dark_energy()
         
@@ -67,9 +71,9 @@ class Cosmo:
         self.k = kh
         self.pk = pk[0]
         self.sigma8 = sigma8[0]
-        self.hubble_z = results.hubble_parameter(z[0])
+        self.H_z = results.hubble_parameter(z[0])
         self.D_A = results.angular_diameter_distance(z[0])
-        self.rdrag = results.get_derived_params()['rdrag']
+        self.r_drag = results.get_derived_params()['rdrag']
 
         return kh, pk[0]
         
@@ -171,8 +175,10 @@ class Cosmo:
             with linear redshift-space distortions
             following Hamilton 1992
         '''
-        xibar = N.array([ N.sum(xi[:i]*r[:i]**2) for i in range(r.size)])*3./r**3*N.gradient(r)
-        #xibarbar = N.array([ N.sum(xi[:i]*r[:i]**4) for i in range(r.size)])*5./r**5*N.gradient(r)
+        xibar   = N.array([ N.sum(xi[:i]*r[:i]**2) for i in range(r.size)])\
+                * 3./r**3 * N.gradient(r)
+        #xibbar = N.array([ N.sum(xi[:i]*r[:i]**4) for i in range(r.size)])\
+                #* 5./r**5 * N.gradient(r)
         xi0 = (1+2./3*f+1./5*f**2)*xi
         xi2 = (4./3*f + 4./7*f**2)*(xi-xibar)
         #xi4 = 8./35*f**2*(xi + 2.5*xibar - 3.5*xibarbar)
@@ -200,6 +206,7 @@ class Cosmo:
         Sigma_par = pars['Sigma_par']
         Sigma_per = pars['Sigma_per']
         Sigma_stream = pars['Sigma_s']
+        Sigma_rec = pars['Sigma_rec']
 
         k = self.k
         mu = self.mu
@@ -219,8 +226,8 @@ class Cosmo:
         #-- anisotropic damping
         sigma_v2 = (1-amu**2)*Sigma_per**2/2+ amu**2*Sigma_par**2/2 
 
-        #-- linear Kaiser redshift space distortions
-        Kaiser = (1+amu**2*beta)**2 
+        #-- linear Kaiser redshift space distortions with reconstruction damping
+        Kaiser = (1+beta*(1.-N.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2 )**2 
 
         #-- Fingers of God
         Dnl = 1./( 1 + ak2d**2*amu2d**2*Sigma_stream**2)
@@ -233,7 +240,7 @@ class Cosmo:
             apk2d = N.interp(ak2d, self.k, self.pk)*bias**2 
             pk2d_out = ( (apk2d - apk2d_s)*N.exp(-ak2d**2*sigma_v2[:, None]) + apk2d_s)
 
-        pk2d_out *= Dnl**2 * Kaiser[:, None]
+        pk2d_out *= Dnl**2 * Kaiser #[:, None]
         pk2d_out /= (at**2*ap)
 
         pk_mult = N.zeros((ell_max/2+1, k.size))
@@ -289,8 +296,23 @@ class Cosmo:
         cosmo = Cosmo()
         r = N.linspace(40, 180, 100)
         pars0 = {'ap':1.0, 'at': 1.0, 'bias':1.0, 'beta':0.35, \
-                 'Sigma_par':10., 'Sigma_per':6., 'Sigma_s':4.}
+                'Sigma_par':10., 'Sigma_per':6., 'Sigma_s':4., 'Sigma_rec':10000.}
         lss = ['-', '--', ':']
+
+        P.figure(figsize=(6, 5))
+        pars = pars0.copy()
+        for i, sigma_rec in enumerate([0., 15.0, 1000.]):
+            pars['Sigma_rec'] = sigma_rec
+            xi_mult = cosmo.get_multipoles_2d(r, pars)
+            for j in range(2):
+                P.subplot(2, 1, j+1)
+                P.plot(r, xi_mult[j]*r**2, ls=lss[i], color='k', lw=2, \
+                       label=r'$\Sigma_r = %.1f$'%sigma_rec)
+                if i==0:
+                    P.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
+        P.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
+        P.legend(loc=0, fontsize=10)
+        
 
         P.figure(figsize=(6, 5))
         pars = pars0.copy()
@@ -338,18 +360,27 @@ class Cosmo:
         P.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
         P.legend(loc=0, fontsize=10)
 
+    def get_dist_rdrag(self):
+        
+        self.DH_rd = 300000./self.H_z/self.r_drag
+        self.DM_rd = self.D_A*(1+self.z)/self.r_drag
+        self.DV_rd = (300000.*self.z*(self.D_A*(1+self.z))**2/self.H_z)**(1./3)/self.r_drag
+        print 'D_H(z=%.2f)/r_d = %.2f'%(self.z, self.DH_rd)
+        print 'D_M(z=%.2f)/r_d = %.2f'%(self.z, self.DM_rd)
+        print 'D_V(z=%.2f)/r_d = %.2f'%(self.z, self.DV_rd)
+
     @staticmethod
     def get_alphas(cosmo, cosmo_fid):
 
-        at = (cosmo.D_A/cosmo.rdrag)/(cosmo_fid.D_A/cosmo_fid.rdrag)
-        ap = (cosmo_fid.rdrag*cosmo_fid.hubble_z)/(cosmo.rdrag*cosmo.hubble_z)
+        at = (cosmo.D_A/cosmo.r_drag)/(cosmo_fid.D_A/cosmo_fid.r_drag)
+        ap = (cosmo_fid.r_drag*cosmo_fid.H_z)/(cosmo.r_drag*cosmo.H_z)
         #-- Padmanabhan & White 2009
         alpha = at**(2./3.)*ap**(1./3)
         epsilon = (ap/at)**(1./3) - 1
         print 'at =', at, ' ap =', ap
         print 'aiso =', alpha, ' epsilon =', epsilon
-        
-
+        return at, ap, alpha, epsilon   
+    
 class Data: 
 
     def __init__(self, r, mono, coss, quad=None, rmin=40., rmax=180., \
@@ -394,18 +425,21 @@ class Model:
         #-- define parameter dictionary
         pars = {}
 
+        
         if fit_iso:
-            pars_names = ['aiso', 'bias', 'beta', 'Sigma_per', 'Sigma_par', 'Sigma_s']
+            pars_names = ['aiso']
             pars['aiso'] = 1.0
         else:
-            pars_names = ['at', 'ap', 'bias', 'beta', 'Sigma_per', 'Sigma_par', 'Sigma_s']
+            pars_names = ['at', 'ap']
             pars['at'] = 1.0
             pars['ap'] = 1.0
+        pars_names += ['bias', 'beta', 'Sigma_per', 'Sigma_par', 'Sigma_s', 'Sigma_rec']
         pars['bias'] = 1.0
         pars['beta'] = 0.4
         pars['Sigma_per'] = 6.
         pars['Sigma_par'] = 10.
         pars['Sigma_s'] = 4.
+        pars['Sigma_rec'] = 1000.
             
         if fit_broadband:
             for i, bb_power in enumerate(N.arange(bb_min, bb_max+1)):
@@ -454,24 +488,82 @@ class Model:
 
 class Chi2: 
 
-    def __init__(self, data, model):
-        self.data = data
-        self.model = model
+    def __init__(self, data=None, model=None, fin=None, z=0.72):
+        if data:
+            self.data = data
+        if model:
+            self.model = model
+        if fin:
+            self.read_galaxy_pars(fin, z=z)
+
+    def read_galaxy_pars(self, fin, z=0.71):
+
+        f = open(fin)
+        f.readline()
+        line = f.readline().split()
+        chi2min, ndata, npars, rchi2min = \
+                float(line[0]), int(line[1]), int(line[2]), float(line[3])
+        f.readline()
+    
+        best_pars = {}
+        errors = {}
+        for line in f.readlines():
+            line = line.split()
+            parname = line[0]
+            best_pars[parname] = float(line[1])
+            errors[parname] = float(line[2])
+
+        if '-nopeak' in fin:
+            no_peak = 1
+        else:
+            no_peak=0
+
+        if 'aiso' in best_pars.keys():
+            fit_multipoles=0
+            fit_iso=1
+        else:
+            fit_multipoles=1
+            fit_iso=0
+
+        if 'bb_0' in best_pars.keys() or 'bb_0_mono' in best_pars.keys():
+            fit_broadband=1
+        else:
+            fit_broadband=0
+
+
+        self.model=Model(fit_broadband=fit_broadband, fit_iso=fit_iso,\
+                    fit_multipoles=fit_multipoles, no_peak=no_peak, norm_pk=1,
+                    z=z)
+        self.model.cosmo.get_dist_rdrag()
+        self.DM_rd = self.model.cosmo.DM_rd
+        self.DH_rd = self.model.cosmo.DH_rd
+        self.DV_rd = self.model.cosmo.DV_rd
+        self.model.pars = best_pars
+        self.chi2min = chi2min
+        self.ndata = ndata
+        self.npars = npars
+        self.rchi2min = rchi2min
+        self.best_pars=best_pars
+        self.errors= errors
+    
+    def get_model(self, r, pars=None):
+        if pars is None:
+            pars = self.best_pars
+
+        model = self.model.value(r, pars)
+        if self.model.fit_broadband:
+            model += self.model.get_broadband(r, pars)
+        return model
 
     def __call__(self, *p):
         pars = {}
-        parsbb = {}
         for i, name in enumerate(self.model.pars_names):
-            if name.startswith('bb'): 
-                parsbb[name] = p[i]
-            else:
-                pars[name] = p[i]
+            pars[name] = p[i]
+        #    else:
+        #  if name.startswith('bb'): 
+        #       parsbb[name] = p[i]
 
-
-        model = self.model.value(self.data.r, pars)
-        if self.model.fit_broadband:
-            model += self.model.get_broadband(self.data.r, parsbb)
-
+        model = self.get_model(self.data.r, pars)
         residual = self.data.cf - model
         inv_cov = self.data.icoss
 
@@ -508,9 +600,11 @@ class Chi2:
         
         self.init_pars = init_pars
 
-        mig = iminuit.Minuit(self, throw_nan=False, forced_parameters=self.model.pars_names, \
+        mig = iminuit.Minuit(self, throw_nan=False, \
+                             forced_parameters=self.model.pars_names, \
                              print_level=1, errordef=1, \
-                             frontend=iminuit.frontends.ConsoleFrontend(), **init_pars)
+                             frontend=iminuit.frontends.ConsoleFrontend(), \
+                             **init_pars)
         mig.tol = 10.0 
         imin = mig.migrad()
         #mig.hesse()
@@ -522,6 +616,7 @@ class Chi2:
         self.chi2min = mig.fval
         self.ndata = self.data.cf.size
         self.npars = mig.narg
+        self.covariance = mig.covariance
         for par in self.model.pars_names:
             if mig.fitarg['fix_'+par]:
                 self.npars -= 1
@@ -536,10 +631,7 @@ class Chi2:
         r = data.r
         cf = data.cf
         dcf = N.sqrt(N.diag(data.coss))
-        cf_model = model.value(r, self.best_pars)
-        if model.fit_broadband:
-            bb = model.get_broadband(r, self.best_pars)
-            cf_model+= bb 
+        cf_model = self.get_model(r, self.best_pars)
 
         if model.fit_multipoles:
             mono = cf[:r.size]
@@ -592,13 +684,121 @@ class Chi2:
 
             mig = iminuit.Minuit(self, forced_parameters=self.model.pars_names, \
                                  print_level=1, errordef=1, \
-                                 frontend=iminuit.frontends.ConsoleFrontend(), **init_pars)
+                                 frontend=iminuit.frontends.ConsoleFrontend(), \
+                                 **init_pars)
             mig.migrad()
             print 'scanning: %s = %.5f  chi2 = %.4f'%(par_name, value, mig.fval)
             chi2_grid[i] = mig.fval
 
         return par_grid, chi2_grid
+
+    def scan_2d(self, par_names=['at','ap'], \
+                par_min=[0.8, 0.8], \
+                par_max=[1.2, 1.2], \
+                par_nsteps=[40, 40] ):
+
+        init_pars = {}
+        for par in self.model.pars.iteritems():
+            name = par[0]
+            value = par[1]
+            init_pars[name] = value
+            init_pars['error_'+name] = abs(value)/10. if value!=0 else 0.1
+    
+
+        init_pars['fix_'+par_names[0]] = True
+        par_grid0 = N.linspace(par_min[0], par_max[0], par_nsteps[0])
+        init_pars['fix_'+par_names[1]] = True
+        par_grid1 = N.linspace(par_min[1], par_max[1], par_nsteps[1])
+
+        chi2_grid = N.zeros(par_nsteps)
        
+        if self.fixes:
+            for key in self.fixes:
+                init_pars[key] = self.fixes[key]
+                init_pars['fix_'+key] = True 
+
+        for i in range(par_nsteps[0]):
+            value0 = par_grid0[i]
+            init_pars[par_names[0]] = value0
+            for j in range(par_nsteps[1]):
+                value1 = par_grid1[j]
+                init_pars[par_names[1]] = value1
+                mig = iminuit.Minuit(self, \
+                         forced_parameters=self.model.pars_names, \
+                         print_level=1, errordef=1, \
+                         frontend=iminuit.frontends.ConsoleFrontend(), \
+                         **init_pars)
+                mig.migrad()
+                print 'scanning: %s = %.5f   %s = %.5f    chi2 = %.4f'%\
+                        (par_names[0], value0, par_names[1], value1, mig.fval)
+                chi2_grid[i, j] = mig.fval
+
+        return par_grid0, par_grid1, chi2_grid
+
+    def read_scan1d(self, fin):
+
+        sfin = fin.split('.')
+        par_name = sfin[-2]
+        x, chi2 = N.loadtxt(fin, unpack=1)
+        bestx = x[0]
+        chi2min = chi2[0]
+        x = N.unique(x[1:])
+        chi2scan = chi2[1:]
+        self.chi2scan = chi2scan
+        self.x=x
+        self.par_name=par_name
+        self.bestx=bestx
+        self.chi2min=chi2min
+
+    def plot_scan1d(self, ls=None, \
+                    color=None,  alpha=None, label=None):
+
+        P.plot(self.x, self.chi2scan-self.chi2min, ls=ls, \
+                color=color, alpha=alpha, label=label)
+
+    def read_scan2d(self, fin):
+
+        sfin = fin.split('.')
+        par_name0 = sfin[-3]
+        par_name1 = sfin[-2]
+
+        x, y, chi2 = N.loadtxt(fin, unpack=1)
+        bestx = x[0]
+        besty = y[0]
+        chi2min = chi2[0]
+
+        x = N.unique(x[1:])
+        y = N.unique(y[1:])
+        chi2scan2d = N.reshape(chi2[1:], (x.size, y.size)).transpose()
+        
+        self.chi2scan2d = chi2scan2d
+        self.x=x
+        self.y=y
+        self.par_name0=par_name0
+        self.par_name1=par_name1
+        self.bestx=bestx
+        self.besty=besty
+        self.chi2min=chi2min
+
+    def plot_scan2d(self, levels=[2.3, 6.18, 11.83], ls=['-', '--', ':'], \
+                    color='b',  alpha=1.0, label=None, scale_dist=0):
+
+
+        for i in range(len(levels)):
+            if i!=0:
+                label=None
+            if scale_dist:
+                DM_rd = self.DM_rd
+                DH_rd = self.DH_rd
+                x = self.x*DM_rd
+                y = self.y*DH_rd
+            else:
+                x = self.x*1.
+                y = self.y*1.
+            P.contour(x, y, self.chi2scan2d-self.chi2min, \
+                      levels=[levels[i]], \
+                      linestyles=[ls[i]], colors=color, alpha=alpha,\
+                      label=label)
 
     def get_parameter(self, par_name='alpha'):
 
@@ -613,7 +813,8 @@ class Chi2:
 
         fout = open(fout, 'w')
         fout.write('chi2    ndata    npars   rchi2\n')
-        fout.write('%f \t %d \t %d \t %f \n'%(self.chi2min, self.ndata, self.npars, self.rchi2min))
+        fout.write('%f \t %d \t %d \t %f \n'%\
+                (self.chi2min, self.ndata, self.npars, self.rchi2min))
         fout.write('param \t value \t error\n')
        
         pars_names = N.sort([p for p in self.best_pars])
