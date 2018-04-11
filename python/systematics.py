@@ -1,8 +1,11 @@
+from __future__ import print_function
+
 import os
 import numpy as N
 import pylab as P
 import healpy as hp
 from astropy.io import fits
+
 
 from scipy.optimize import minimize
 
@@ -22,19 +25,20 @@ class MultiFit:
         self.dec_data=dec
         self.weights_data = weights
         self.pix_data = self.make_healmap(ra, dec, weights) 
-        print 'Number of galaxies', ra.size
-        print 'Weight of galaxies', sum(weights)
+        print('Number of galaxies', ra.size)
+        print('Weight of galaxies', sum(weights))
 
     def read_randoms(self, ra, dec, weights):
         self.ra_rand=ra
         self.dec_rand=dec
         self.weights_rand=weights
         self.pix_rand = self.make_healmap(ra, dec, weights) 
-        print 'Number of randoms', ra.size
-        print 'Weight of randoms', sum(weights)
+        print( 'Number of randoms', ra.size)
+        print( 'Weight of randoms', sum(weights))
 
     def read_systematic_maps_fits(self, nside=256, index=N.array([0, 6]), \
-            infits=os.environ['EBOSS_CLUSTERING_DIR']+'/etc/systematic_maps_256nest.fits'):
+            infits=os.environ['EBOSS_CLUSTERING_DIR']+\
+                    '/etc/systematic_maps_256nest.fits'):
         ''' read FITS file containing all healpix maps
                  
             nside: integer
@@ -56,7 +60,7 @@ class MultiFit:
             syst_maps: dict with systematic maps and information about them
         '''
         if nside>256:
-            print 'nside should be at most 256'
+            print('nside should be at most 256')
             return
 
         a = fits.open(infits)
@@ -82,7 +86,7 @@ class MultiFit:
     def read_systematic_maps_ascii(nside=256, index=N.array([0, 6])):
         '''Similar to read_systematic_maps_fits() but reads from ASCII files. It's longer! '''
 
-        print 'Reading healpix maps of systematics:'
+        print('Reading healpix maps of systematics:')
 
         sysdir = os.environ['MKESAMPLE_DIR']+'/inputFiles/'
 
@@ -119,7 +123,7 @@ class MultiFit:
         nsyst = len(healpixfiles)
         allsyst = N.zeros((nsyst, 12*nside**2))
         for i in range(nsyst):
-            print '   %s'%os.path.basename(healpixfiles[i])
+            print('   %s'%os.path.basename(healpixfiles[i]))
             onemap = N.loadtxt(healpixfiles[i])
             onemap = hp.ud_grade(onemap, nside, order_in='NESTED', order_out='NESTED')
             allsyst[i] = onemap
@@ -297,16 +301,16 @@ class MultiFit:
         edges_fit = self.edges[wfit]
         norm_fit = self.norm[wfit]
 
-        print 'Starting minimizer....'
+        print('Starting minimizer....')
         self.wfit = wfit
         self.wmap = wmap
         pars_object = minimize(self.chi2, pars0, \
                                args = (maps_fit, edges_fit, norm_fit, \
                                        self.pix_data[wmap], self.hist_rand[wfit]), \
                                method='Nelder-Mead')
-        print pars_object['message']
-        print pars_object['success']
-        print pars_object['x']
+        print(pars_object['message'])
+        print(pars_object['success'])
+        print(pars_object['x'])
 
         pars1 = pars_object['x']
 
@@ -321,12 +325,12 @@ class MultiFit:
         chi2_fit = self.chi2(pars_all1, maps[:, wmap], self.edges, self.norm, \
                              self.pix_data[wmap], self.hist_rand)
 
-        print ''
-        print '     chi2_null = %.3f/%d = %.3f'%\
-                    (chi2_null, (nsyst*nbins), chi2_null/(nsyst*nbins))
-        print '     chi2_fit  = %.3f/(%d-%d) = %.3f'%\
+        print('')
+        print('     chi2_null = %.3f/%d = %.3f'%\
+                    (chi2_null, (nsyst*nbins), chi2_null/(nsyst*nbins)) )
+        print('     chi2_fit  = %.3f/(%d-%d) = %.3f'%\
                     (chi2_fit, (nsyst*nbins), pars1.size, \
-                     chi2_fit/(nsyst*nbins-pars1.size))
+                     chi2_fit/(nsyst*nbins-pars1.size)) )
 
         self.pars1 = pars1
         self.ndata = nsyst*nbins

@@ -1,9 +1,10 @@
+from __future__ import print_function
 import os
 import sys
 import numpy as N
 import pylab as P
-import mangle
-import graphmask
+#import mangle
+#import graphmask
 import copy
 import healpy as hp
 from subprocess import call
@@ -17,7 +18,7 @@ from astropy import units as u
 class Cosmo:
 
     def __init__(self, OmegaM=0.31, h=0.676):
-        print 'Initializing cosmology with OmegaM = %.2f'%OmegaM
+        print('Initializing cosmology with OmegaM = %.2f'%OmegaM)
         c = 299792458. #m/s
         OmegaL = 1.-OmegaM
         ztab = N.linspace(0., 4., 10000)
@@ -63,7 +64,7 @@ class Cosmo:
         zmax = dmax * N.cos(theta)
 
         for pair in [[xmin, xmax], [ymin, ymax], [zmin, zmax]]:
-            print abs(N.array(pair).min() - N.array(pair).max())
+            print( abs(N.array(pair).min() - N.array(pair).max()))
 
 class Nbar:
     
@@ -108,13 +109,17 @@ class Nbar:
 
     def export(self, fout):
         fout = open(fout, 'w')
-        print>>fout, '# effective area (deg^2), effective volume (Mpc/h)^3:'
-        print>>fout, self.mask_area_eff, self.veff_tot
-        print>>fout, \
-            '# zcen, zlow, zhigh, nbar, wfkp, shell_vol, total weighted gals'
+        print('# effective area (deg^2), effective volume (Mpc/h)^3:', \
+              file=fout)
+        print(fout, self.mask_area_eff, self.veff_tot, \
+              file=fout)
+        print('# zcen, zlow, zhigh, nbar, wfkp, shell_vol,'+\
+              ' total weighted gals', \
+              file=fout)
         for i in range(self.nbins):
-            print>>fout, self.zcen[i], self.zlow[i], self.zhigh[i], \
-                    self.nbar[i], self.wfkp[i], self.shell_vol[i], self.wgals[i]
+            print(self.zcen[i], self.zlow[i], self.zhigh[i], \
+                  self.nbar[i], self.wfkp[i], self.shell_vol[i], self.wgals[i],\
+                  file=fout)
         fout.close()
 
 class Mask:
@@ -187,7 +192,7 @@ class Mask:
             mask = Mask.read_mangle_mask(Mask.geometry_file)
         pix = mask.get_polyids(ra, dec)
         if sum(pix<0) > 0:
-            print 'There are points outside mask!'
+            print( 'There are points outside mask!')
         return mask.chunk[pix]
 
     @staticmethod
@@ -214,24 +219,24 @@ class Mask:
         bits = N.zeros(ra.size, dtype=int)
 
         #-- getting all targets inside geometry first
-        print ' Applying geometry'
+        print(' Applying geometry')
         mask = Mask.read_mangle_mask(Mask.geometry_file)
         w_in = Mask.veto(ra, dec, mask, out=0)
-        print '   Inside geometry', sum(w_in), 'of', ra.size
+        print('   Inside geometry', sum(w_in), 'of', ra.size)
         w &= w_in
 
         for i, name in enumerate(masknames):
-            print ' Applying veto with:', Mask.vetos[name]
-            print '   reading mask'
+            print(' Applying veto with:', Mask.vetos[name])
+            print('   reading mask')
             mask = mangle.Mangle(Mask.mask_dir+'/'+Mask.vetos[name], \
                                  keep_ids=True)
-            print '   getting pixels'
+            print('   getting pixels')
             w_out = Mask.veto(ra, dec, mask, out=1) 
             bits[~w_out] += 2**i
             w &= w_out
-            print '   Outside this mask:', sum(w_out)
-            print '   Objects left: ', sum(w)
-            print '   Objects vetoed: ', sum(~w)
+            print('   Outside this mask:', sum(w_out))
+            print('   Objects left: ', sum(w))
+            print('   Objects vetoed: ', sum(~w))
      
         return w, bits
 
@@ -267,7 +272,7 @@ class Mask:
         
         for sec in sectors:
             if sec not in unique_mask_sectors:
-                print sec, 'not in mask'
+                print(sec, 'not in mask')
 
         hist_den, bins = N.histogram(sectors[w_den], bins=bins)
         hist_num, bins = N.histogram(sectors[w_num], bins=bins)
@@ -275,8 +280,8 @@ class Mask:
         comp = N.zeros(unique_mask_sectors.size) 
         comp[w] = hist_num[w]*1./hist_den[w]
 
-        print '  Completeness values (min, median, max):', \
-                min(comp[w]), N.median(comp[w]), max(comp[w])
+        print('  Completeness values (min, median, max):', \
+                min(comp[w]), N.median(comp[w]), max(comp[w]))
 
         #-- setting low completeness sectors to zero
         w = (comp < mincomp)
@@ -284,12 +289,12 @@ class Mask:
 
         #-- update mask
         new_mask = copy.deepcopy(mask)
-        print '  Filling sector completeness in mask'
+        print('  Filling sector completeness in mask')
         for i in range(mask.sector.size):
             w = (unique_mask_sectors == mask.sector[i])
             new_mask.weights[i] = comp[w]
 
-        print '  Getting completeness for each galaxy'
+        print('  Getting completeness for each galaxy')
         comps = N.zeros(sectors.size)
 
         for i, sec in enumerate(sectors):
@@ -334,7 +339,7 @@ class Mask:
                      cenaz=5, cenel=15, width=80, \
                      height=48,projection='laea')
         else:
-            print 'cap = North or South. Input:', cap
+            print('cap = North or South. Input:', cap)
 
         m.drawmeridians(N.arange(0,360,5),linewidth=.1)
         m.drawparallels(N.arange(-10,80,10),linewidth=.1)
@@ -376,7 +381,7 @@ class Mask:
             A Catalog object containing RA, Dec and Z
         '''
 
-        print '''
+        print('''
         =====================================
         ==== Creating randoms over mask  ====
         =====================================
@@ -384,7 +389,7 @@ class Mask:
         nran: %d
         mask_file: %s
         seed_ransack: %d 
-         '''%(nran, mask_file, seed_ransack) 
+         '''%(nran, mask_file, seed_ransack)) 
 
         #-- run ransack to generate random points in sectors 
         #-- based on fiber completeness
@@ -536,13 +541,13 @@ class Catalog(object):
                 self.vetofraction = header['VETOFRAC']
                 self.veff_tot = header['VEFF_TOT']
             except:
-                print 'Reading a different catalog'
+                print('Reading a different catalog')
                 self.vetofraction = 1 
 
 
     def read_collate(self, unique=0):
 
-        print 'Reading', Catalog.collate 
+        print('Reading', Catalog.collate )
         a = fits.open(Catalog.collate)[1].data
     
         fields = [  'RA', 'DEC', 'EBOSS_TARGET0', 'EBOSS_TARGET1', \
@@ -556,12 +561,12 @@ class Catalog(object):
 
         self.size = self.RA.size
        
-        print self.size, 'entries'
+        print(self.size, 'entries')
  
         #-- entries with THING_ID_TARGETING==0
         w = self.THING_ID_TARGETING > 0
         if sum(~w)>0:
-            print 'Removing', sum(~w), 'entries with THING_ID_TARGETING==0'
+            print('Removing', sum(~w), 'entries with THING_ID_TARGETING==0')
             self.cut(w)
 
         #-- fixing duplicates
@@ -577,11 +582,11 @@ class Catalog(object):
         
         uthid = N.unique(self.THING_ID_TARGETING)
         if self.size == uthid.size:
-            print 'There are no duplicates'
+            print('There are no duplicates')
             return
 
-        print 'There are duplicates in the collate file:', self.size-uthid.size
-        print 'Removing duplicates...'    
+        print('There are duplicates in the collate file:', self.size-uthid.size)
+        print('Removing duplicates...'    )
         w = N.argsort(self.THING_ID_TARGETING)
         index = list()
         for i in range(self.size-1):
@@ -593,7 +598,7 @@ class Catalog(object):
             index.append(self.size-1)
 
         index = N.array(index)
-        print self.size, index.size
+        print(self.size, index.size)
         self.cut(w[index])
 
     def read_mock(self, mockfile, target='LRG'):
@@ -636,7 +641,7 @@ class Catalog(object):
             self.target = 'QSO'
             self.P0 = 6000.
         else:
-            print 'Need to choose between LRG or QSO' 
+            print('Need to choose between LRG or QSO' )
 
     def select_galactic_cap(self, cap):
 
@@ -646,17 +651,17 @@ class Catalog(object):
         elif cap=='South':
             self.cut(~w)
         else:
-            print 'Need to choose between North or South'
+            print('Need to choose between North or South')
         self.cap = cap
 
     def veto(self):
         ''' Run set of veto masks defined in Mask.run_vetos '''
 
-        print ' '
-        print '========================================='
-        print '==== Running veto masks over catalog ===='
-        print '========================================='
-        print ' '
+        print(' ')
+        print('=========================================')
+        print('==== Running veto masks over catalog ====')
+        print('=========================================')
+        print(' ')
         
         #--- for LRGs
         if self.target=='LRG':
@@ -666,7 +671,7 @@ class Catalog(object):
         elif self.target=='QSO':
             masknames = ['bad_field', 'bright_star', 'bright_object', 'centerpost']
         else:
-            print 'Are these LRG or QSO?'
+            print('Are these LRG or QSO?')
             return 0
 
         w, bits = Mask.run_vetos(self.RA, self.DEC, masknames=masknames)
@@ -676,7 +681,7 @@ class Catalog(object):
         if self.target=='LRG' and self.cap=='North':
             #-- Cut problematic region for NGC
             wo = abs(self.DEC-40.55)>0.05
-            print 'Inside overlap region', sum(~wo)
+            print('Inside overlap region', sum(~wo))
             self.vetobits[~wo] = 2**10
             #self.cut(wo)
 
@@ -684,11 +689,11 @@ class Catalog(object):
  
 
     def match_with_redshifts(self, zcatalog=None, zwar_cut=1):
-        print ' '
-        print '======================================================='
-        print '==== Matching catalog with spectroscopic redshifts ===='
-        print '======================================================='
-        print ' '
+        print(' ')
+        print('=======================================================')
+        print('==== Matching catalog with spectroscopic redshifts ====')
+        print('=======================================================')
+        print(' ')
 
         self.PLATE = N.zeros(self.size, dtype=int)
         self.FIBERID = N.zeros(self.size, dtype=int)
@@ -721,8 +726,8 @@ class Catalog(object):
         id2, id1, dist = Utils.spherematch(spall.RA, spall.DEC, \
                                            self.RA, self.DEC)
 
-        print 'Entries in catalog: ', self.size
-        print 'Entries in catalog with spectro info:', id1.size
+        print('Entries in catalog: ', self.size)
+        print('Entries in catalog with spectro info:', id1.size)
 
         self.PLATE[id1] = spall.PLATE[id2]
         self.FIBERID[id1] = spall.FIBERID[id2]
@@ -731,8 +736,8 @@ class Catalog(object):
         self.XFOCAL[id1] = spall.XFOCAL[id2]
         self.YFOCAL[id1] = spall.YFOCAL[id2]
 
-        print 'Entries with different thing_id', \
-                sum(self.THING_ID_TARGETING[id1] != spall.THING_ID[id2])
+        print('Entries with different thing_id', \
+                sum(self.THING_ID_TARGETING[id1] != spall.THING_ID[id2]))
         self.THING_ID[id1] = spall.THING_ID[id2]
         self.CHUNK_SPEC[id1] = spall.CHUNK[id2]
         self.EBOSS_TARGET_ID_SPEC[id1] = spall.EBOSS_TARGET_ID[id2].astype(int)
@@ -742,11 +747,15 @@ class Catalog(object):
             self.ZWARNING[id1] = spall.ZWARNING_RM[id2] 
             self.CLASS[id1] = spall.CLASS_RM[id2]
             self.RCHI2DIFF[id1] = spall.RCHI2DIFF_1[id2] 
-            #-- if redmonster and spec1d disagree for  z<0.4 and z>1.0, pick spec1d classification
-            wz = N.where( (abs(spall.Z_RM[id2] - spall.Z_NOQSO[id2]) > 0.01) & \
-                 (spall.ZWARNING_RM[id2] == 0) & (spall.ZWARNING_NOQSO[id2] == 0) & \
-                 ((spall.Z_RM[id2] < 0.4) | (spall.Z_RM[id2] > 1.0)) )[0]
-            print '   Using spec1d instead of redmonster redshifts for ', wz.size, 'galaxies'
+            #-- if redmonster and spec1d disagree for  z<0.4 and 
+            #-- z>1.0, pick spec1d classification
+            wz = N.where((abs(spall.Z_RM[id2] - spall.Z_NOQSO[id2]) > 0.01)&\
+                         (spall.ZWARNING_RM[id2]    == 0) & \
+                         (spall.ZWARNING_NOQSO[id2] == 0) & \
+                         ( (spall.Z_RM[id2] < 0.4) | \
+                           (spall.Z_RM[id2] > 1.0)      ))[0]
+            print('   Using spec1d instead of redmonster redshifts for ', \
+                   wz.size, 'galaxies')
             if wz.size>0:
                 self.Z[id1[wz]] = spall.Z_NOQSO[id2[wz]]
                 self.ZWARNING[id1[wz]] = spall.ZWARNING_NOQSO[id2[wz]]
@@ -794,7 +803,7 @@ class Catalog(object):
        
         plates_per_sect = dict()
 
-        print 'Getting plate numbers in', unique_sectors.size, 'sectors' 
+        print('Getting plate numbers in', unique_sectors.size, 'sectors' )
         for sect in unique_sectors:
             w = (sectors == sect) 
             ps = N.unique(plates[w])
@@ -804,7 +813,7 @@ class Catalog(object):
                 line = '%d '%(sect)
                 for p in ps:
                     line+='%d '%p
-                print>>fsec, line
+                print(line, file=fsec)
                    
                    
         self.plates_per_sect = plates_per_sect 
@@ -842,7 +851,7 @@ class Catalog(object):
             N.random.seed(seed)
 
         if sum(mask.weights == 0)>0:
-            print 'Warning: mask containing zero weight regions'
+            print('Warning: mask containing zero weight regions')
 
         if use_pixels:
             sectors = mask.get_polyids(ra, dec)
@@ -867,11 +876,11 @@ class Catalog(object):
 
     def fiber_collision(self, apply_noz=1, dist_root=''):
 
-        print ' '
-        print '========================================'
-        print '==== Finding fiber-collision pairs  ===='
-        print '========================================'
-        print ' '
+        print(' ')
+        print('========================================')
+        print('==== Finding fiber-collision pairs  ====')
+        print('========================================')
+        print(' ')
 
         sectors = self.SECTOR
         unique_sectors = N.unique(sectors)
@@ -895,7 +904,7 @@ class Catalog(object):
         if dist_root != '':
             fout = open(dist_root, 'w')
 
-        print 'Solving fiber collisions in ', unique_sectors.size, 'sectors' 
+        print('Solving fiber collisions in ', unique_sectors.size, 'sectors' )
         for i, sect in enumerate(unique_sectors):
             w = (sectors == sect) & (all_imatch != 2) & (self.vetobits == 0)
 
@@ -908,11 +917,11 @@ class Catalog(object):
             if (imatch==0).all():
                 continue
 
-            print '  %d of %d'%(i, unique_sectors.size), \
+            print('  %d of %d'%(i, unique_sectors.size), \
                   '\tSector#:', sect,\
                   '\tTargets:', N.sum(w), \
                   '\tnplates:', len(plates),\
-                  '\tnspec:', sum(imatch>0)
+                  '\tnspec:', sum(imatch>0))
 
             #-- call to spheregroup for galaxies (with new redshifts) in this sector
             #-- with linking length of 62''.
@@ -929,7 +938,7 @@ class Catalog(object):
             for pair in pairs:
                 imatch1 = imatch[pair[0]]
                 imatch2 = imatch[pair[1]]
-                #print imatch1, imatch2
+                #print(imatch1, imatch2)
 
                 if imatch1 != 0 or imatch2 != 0:
                     pair_in_sector_tot += 1
@@ -938,7 +947,7 @@ class Catalog(object):
                 if imatch1 != 0 and imatch1 != 3 and imatch2 != 0 and imatch2 != 3:
                     gal_in_sector_good += 1
                     pair_in_sector_good += 1
-                    #print 'This collision is solved through many plates'
+                    #print('This collision is solved through many plates')
 
                 #-- solving collision
                 elif imatch1 == 0 and imatch2 !=0 and imatch2 != 3:
@@ -947,7 +956,7 @@ class Catalog(object):
                     imatch1 = 3
                     weight_cp[pair[1]] += 1
                     gal_in_sector_bad += 1
-                    #print 'Solving collision: putting right redshift on the left'
+                    #print('Solving collision: putting right redshift on the left')
 
                 elif imatch2 == 0 and imatch1 !=0 and imatch1 != 3:
                     z[pair[1]] = z[pair[0]]
@@ -955,7 +964,7 @@ class Catalog(object):
                     imatch2 = 3
                     weight_cp[pair[0]] += 1
                     gal_in_sector_bad += 1
-                    #print 'Solving collision: putting left redshift on the right'
+                    #print('Solving collision: putting left redshift on the right')
         
 
             if pair_in_sector_tot > 0: 
@@ -971,11 +980,11 @@ class Catalog(object):
                 cp_pair_over_poss = 0.
                 cp_gal_over_poss = 0.
 
-            print '  Close-pairs:', len(pairs)
-            print '     pairs numbers :', pair_in_sector_good, \
-                        pair_in_sector_tot, cp_pair_over_poss 
-            print '     galaxy numbers:', gal_in_sector_good,  \
-                        gal_in_sector_bad, cp_gal_over_poss
+            print('  Close-pairs:', len(pairs))
+            print('     pairs numbers :', pair_in_sector_good, \
+                        pair_in_sector_tot, cp_pair_over_poss )
+            print('     galaxy numbers:', gal_in_sector_good,  \
+                        gal_in_sector_bad, cp_gal_over_poss)
 
             all_z[w] = z
             all_imatch[w] = imatch
@@ -1015,17 +1024,20 @@ class Catalog(object):
                         if r1 < cp_gal_over_poss: continue
                         r2 = N.random.rand() 
                         if r2 > 0.5: 
-                              imatch[pair[0]] = 8
-                              imatch1 = 8 # this needs to update too so the same galaxy doesn't get updated twice.
-                              z[pair[0]] = z[pair[1]]
-                              weight_cp[pair[1]] += weight_cp[pair[0]]
+                            imatch[pair[0]] = 8
+                            # this needs to update too so the same galaxy 
+                            # doesn't get updated twice.
+                            imatch1 = 8 
+                            z[pair[0]] = z[pair[1]]
+                            weight_cp[pair[1]] += weight_cp[pair[0]]
                         else:
-                              imatch[pair[1]] = 8
-                              imatch2 = 8 # this needs to update too so the same galaxy doesn't get updated twice.
-                              z[pair[1]] = z[pair[0]]
-                              weight_cp[pair[0]] += weight_cp[pair[1]]
-                        
-                        cnt_legacy_removed += 1L
+                            imatch[pair[1]] = 8
+                            # this needs to update too so the same galaxy 
+                            # doesn't get updated twice.
+                            imatch2 = 8 
+                            z[pair[1]] = z[pair[0]]
+                            weight_cp[pair[0]] += weight_cp[pair[1]]
+                        cnt_legacy_removed += 1
                 #-- end of pair loop            
             #-- if any imatch==2 in this sector
             all_z[ww] = z
@@ -1045,16 +1057,20 @@ class Catalog(object):
             #-- find closest neighbor with imatch = 1, 4 (star) or 9 (wrong class)
             wgood = N.where( (imatch == 1) | (imatch == 4) | (imatch == 9))[0]
             if wgood.size == 0:
-                print '  No good redshifts found to do redshift failure correction'
+                print('  No good redshifts found to do \
+                         redshift failure correction')
                 continue
      
-            print '     Failures:', sum(wz), '\t Number of targets available to apply correction', wgood.size
-            id1, id2, dist = Utils.spherematch(ra[wz], dec[wz], ra[wgood], dec[wgood], \
-                                         angle=2.)
+            print('     Failures:', sum(wz), \
+                  '\t Number of targets available to apply correction', \
+                  wgood.size)
+            id1, id2, dist = Utils.spherematch(\
+                                ra[wz], dec[wz], ra[wgood], dec[wgood], \
+                                angle=2.)
            
             if dist_root!='': 
                 for j in range(dist.size): 
-                    print>>fout, sect, dist[j]
+                    print(sect, dist[j], file=fout)
 
             #-- attribute same redshift and transfer weight_cp 
             imatch[wz] = 5
@@ -1118,7 +1134,7 @@ class Catalog(object):
         #-- numerator: spectroscopic confirmed good targets and close-pairs  
         w_num = (imatch==1) | (imatch==3) 
         #-- denominator: confirmed, corrected failures and failures
-        w_den = (imatch!=2) & ( imatch != 4) & (imatch!= 9) #-- no legacy or stars or wrong class
+        w_den = (imatch!=2) & ( imatch != 4) & (imatch!= 9) 
     
         new_mask, tinker_comp = Mask.get_sector_completeness(\
                                 mask, w_num, w_den, sectors, mincomp=mincomp)
@@ -1134,14 +1150,14 @@ class Catalog(object):
 
         ''' 
 
-        print ' '
-        print '======================================================'
-        print '==== Computing fiber and spectro completeness     ===='
-        print '======================================================'
-        print ' '
+        print(' ')
+        print('======================================================')
+        print('==== Computing fiber and spectro completeness     ====')
+        print('======================================================')
+        print(' ')
 
         if mask is None:
-            print '   Reading geometry file'
+            print('   Reading geometry file')
             mask = Mask.read_mangle_mask(Mask.geometry_file)
                     
 
@@ -1164,15 +1180,15 @@ class Catalog(object):
                 fout = export_dir+mask_root
                 m.write_fits_file(fout+'.fits', keep_ids=True)
                 m.writeply(fout+'.ply', keep_ids=True)
-                print '  Exported %s completeness to:\n  '%name+fout
+                print('  Exported %s completeness to:\n  '%name+fout)
             
     def trim_catalog(self, cp=1, noz=1, comp='fibercomp'):
 
-        print ' '
-        print '================================='
-        print '==== Trimming data catalog  ====='
-        print '================================='
-        print ' '
+        print(' ')
+        print('=================================')
+        print('==== Trimming data catalog  =====')
+        print('=================================')
+        print(' ')
     
         if comp=='fibercomp':
             self.COMP = self.FIBER_COMP
@@ -1183,7 +1199,7 @@ class Catalog(object):
         elif comp=='tink':
             self.COMP = self.TINK_COMP
         else:
-            print 'Need to choose completeness: fibercomp, zcomp or combined or tink'
+            print('Need to choose completeness: fibercomp, zcomp or combined or tink')
             
 
         #-- randomly sub-sample known galaxies to match completeness
@@ -1203,8 +1219,8 @@ class Catalog(object):
         self.ngalaxies = ngal
         self.wgalaxies = wgal
 
-        print ' Total number of galaxies with redshifts:', self.ngalaxies 
-        print ' Total weight of galaxies with redshifts:', self.wgalaxies 
+        print(' Total number of galaxies with redshifts:', self.ngalaxies )
+        print(' Total weight of galaxies with redshifts:', self.wgalaxies )
 
     def create_randoms(self, nran, mask_root, do_veto=0, seed_ransack=323466458):
        
@@ -1246,8 +1262,8 @@ class Catalog(object):
         rancat.mask_area = self.mask_area
         rancat.mask_area_eff = self.mask_area_eff
 
-        print 'Survey area:          ', self.mask_area, ' (sq. deg.)  '  
-        print 'Survey area effective:', self.mask_area_eff, ' (sq. deg.)  '  
+        print('Survey area:          ', self.mask_area, ' (sq. deg.)  '  )
+        print('Survey area effective:', self.mask_area_eff, ' (sq. deg.)  '  )
 
     def compute_nbar(self, cosmo=None, zmin=0.0, zmax=3.5, dz=0.005, \
                         export='', cp=1, noz=1, syst=1):
@@ -1261,11 +1277,11 @@ class Catalog(object):
 
         '''
 
-        print ' '
-        print '====================================================='
-        print '=== Computing nbar and assigning random redshifts ==='
-        print '====================================================='
-        print ' '
+        print(' ')
+        print('=====================================================')
+        print('=== Computing nbar and assigning random redshifts ===')
+        print('=====================================================')
+        print(' ')
 
         if cosmo is None:
             cosmo = Cosmo()
@@ -1388,7 +1404,7 @@ class Catalog(object):
             pass
 
         hdulist.writeto(fout, overwrite=True)
-        print 'Catalog exported to: ', fout
+        print('Catalog exported to: ', fout)
 
     def get_weights(self, cp=1, noz=1, fkp=0, syst=0):
         
@@ -1449,7 +1465,7 @@ class Catalog(object):
 
         c = Catalog()
         for f in fields:
-            print f
+            print(f)
             x = N.append(c1.__dict__[f], c2.__dict__[f], axis=0)
             c.__dict__[f] = x
 
@@ -1464,29 +1480,13 @@ class Catalog(object):
 
         return c
 
-        
 
 
-class Survey:
-
-    def __init__(self, *args):
-        if len(args)>0:
-            self.data, self.randoms, self.nbar_file, self.mask_file = \
-                    N.loadtxt(args[0], dtype=str)
-
-    def export(self, fout):
-
-        fout = open(fout, 'w')
-        print>>fout, self.data
-        print>>fout, self.randoms
-        print>>fout, self.nbar_file
-        print>>fout, self.mask_file
-        
-
-
-
-
-def main(outdir=None, collate=None, geometry=None, vetos_dir=None, zcatalog=None, \
+def main(outdir=None, \
+         collate=None, \
+         geometry=None, \
+         vetos_dir=None, \
+         zcatalog=None, \
          version='test', target='LRG', cap='Both', comp='fibercomp',\
          mincomp=0.5, do_veto=1, zmin=0.6, zmax=1.0,\
          noz=0, unique=0, zwar_cut=1, nran=50, fc=1, OmegaM=0.31):
@@ -1496,7 +1496,8 @@ def main(outdir=None, collate=None, geometry=None, vetos_dir=None, zcatalog=None
         - Produce catalogs similar to official ones
         main(version='my1.5', comp='fibercomp', unique=0, zwar_cut=0)
 
-        - Produce catalogs a la CMASS, using fiber completeness, and fixing redshift
+        - Produce catalogs a la CMASS, using fiber completeness, 
+        and fixing redshift
         failures by increasing weight of closest neighbor
         main(version='test7fcomp', comp='fibercomp')
 
@@ -1531,13 +1532,16 @@ def main(outdir=None, collate=None, geometry=None, vetos_dir=None, zcatalog=None
         pass
 
     #log_file = '%s/log-%s-%s-%s.txt'%(outdir, version, target, cap)
-    dist_root = '%s/dist-%s-%s-%s.txt'%(outdir, version, target, cap)
+    info = (outdir, version, target, cap)
+    dist_root = '%s/dist-%s-%s-%s.txt'%info
     sect_plate = '%s/sectplate-%s-%s-%s.txt'%(outdir, version, target, cap)
     mask_root = '%s/mask-%s-%s-%s'%(outdir, version, target, cap)
     nbar_file = '%s/nbar-%s-%s-%s.dat'%(outdir, version, target, cap)
     syst_root = '%s/syst-%s-%s-%s'%(outdir, version, target, cap)
-    cat_dat_file = '%s/ebosscat-%s-%s-%s.dat.fits'%(outdir, version, target, cap)
-    cat_ran_file = '%s/ebosscat-%s-%s-%s.ran.fits'%(outdir, version, target, cap)
+    cat_dat_file = '%s/ebosscat-%s-%s-%s.dat.fits'%\
+                    (outdir, version, target, cap)
+    cat_ran_file = '%s/ebosscat-%s-%s-%s.ran.fits'%\
+                  (outdir, version, target, cap)
 
 
     if fc:
@@ -1585,7 +1589,8 @@ def main(outdir=None, collate=None, geometry=None, vetos_dir=None, zcatalog=None
    
     #-- build angular random catalog  
     mask_root = mask_root.replace('mask', comp) 
-    rancat = cat.create_randoms(nran, mask_root, do_veto=do_veto, seed_ransack=323466458 )
+    rancat = cat.create_randoms(nran, mask_root, do_veto=do_veto, \
+                                seed_ransack=323466458 )
 
     #-- compute total effective area in sq degrees (input for compute_nbar)
     mask = Mask.read_mangle_mask(mask_root)
