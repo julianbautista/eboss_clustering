@@ -1,9 +1,11 @@
+from __future__ import print_function
 import numpy as N
 import pylab as P
 import os
 import copy 
 import glob
 
+from 
 from scipy.optimize import minimize
 #from astropy.io import fits
 
@@ -56,11 +58,11 @@ class Corr:
 
     def export(self, fout):
         fout = open(fout, 'w')
-        print>>fout, self.wd, self.wd2, self.wr, self.wr2
-        print>>fout, self.header 
+        print(self.wd, self.wd2, self.wr, self.wr2, file=fout)
+        print(self.header, file=fout)
         for i in range(self.cf.size):
-            print>>fout, self.rp[i], self.rt[i], self.cf[i], self.dcf[i], \
-                         self.dd[i], self.dr[i], self.rr[i]
+            print( self.rp[i], self.rt[i], self.cf[i], self.dcf[i], \
+                   self.dd[i], self.dr[i], self.rr[i] , file=fout)
         fout.close()
 
     def export_pylya(self, fout='', zeff=0.74):
@@ -128,7 +130,7 @@ class Corr:
 
         #-- ratio of (number of randoms)/(number of galaxies)
         f = (c1.wr/c1.wd)/(c2.wr/c2.wd) 
-        print (c1.wr/c1.wd), (c2.wr/c2.wd), f
+        print((c1.wr/c1.wd), (c2.wr/c2.wd), f)
 
         dd = c1.dd + c2.dd
         dr = c1.dr + c2.dr*f
@@ -309,7 +311,7 @@ class Wedges:
     def plot_many(self, label=None, n=-1, scale_r=2, alpha=1.0, color=None):
 
         if not hasattr(self, 'nmocks'):
-            print 'This is a single mock'
+            print('This is a single mock')
             return
 
         cc = Wedges()
@@ -415,7 +417,7 @@ class Multipoles:
         r = N.unique(r1)
         nr = r.size
         if (r != self.r).any():
-            print 'Warning: covariance matrix is uncompatible with multipoles'
+            print( 'Warning: covariance matrix is uncompatible with multipoles')
 
         ni = N.unique(i).size
         coss = N.reshape(coss, (ni, ni))
@@ -499,7 +501,7 @@ class Multipoles:
                   scale_r=2, alpha=1.0, color=None):
 
         if not hasattr(self, 'nmocks'):
-            print 'This is a single mock'
+            print('This is a single mock')
             return
 
         cc = Multipoles()
@@ -512,9 +514,9 @@ class Multipoles:
     def export(self, fout):
         r = self.r
         fout = open(fout, 'w')
-        print>>fout, '#r(Mpc/h) mono quad'
+        print( '#r(Mpc/h) mono quad', file=fout)
         for i in range(r.size):
-            print>>fout, r[i], self.mono[i], self.quad[i]
+            print(r[i], self.mono[i], self.quad[i], file=fout)
         fout.close()
     
     def export_cov(self, fout):
@@ -524,7 +526,7 @@ class Multipoles:
 
         for i in range(coss.shape[0]):
             for j in range(coss.shape[1]):
-                print>>fout, i, j, r[i%r.size], r[j%r.size], coss[i, j]
+                print( i, j, r[i%r.size], r[j%r.size], coss[i, j], file=fout)
         fout.close()
 
     @staticmethod
@@ -534,7 +536,7 @@ class Multipoles:
         allm = glob.glob(root)
         nmocks = len(allm)
         if nmocks < 1:
-            print 'No mocks found!'
+            print('No mocks found!')
             return
 
         cs = [Multipoles(m, multipoles=multipoles, \

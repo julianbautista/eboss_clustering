@@ -1362,7 +1362,7 @@ class Catalog(object):
 
         collist = []
 
-        for f in self.__dict__.iteritems():
+        for f in self.__dict__.items():
             if hasattr(f[1], 'size') and f[1].size % self.size == 0:
                 arraytype = f[1].dtype.name
                 if 'int' in arraytype:
@@ -1403,7 +1403,7 @@ class Catalog(object):
         except:
             pass
 
-        hdulist.writeto(fout, overwrite=True)
+        hdulist.writeto(fout, clobber=True)
         print('Catalog exported to: ', fout)
 
     def get_weights(self, cp=1, noz=1, fkp=0, syst=0):

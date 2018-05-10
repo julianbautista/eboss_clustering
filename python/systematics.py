@@ -25,16 +25,12 @@ class MultiFit:
         self.dec_data=dec
         self.weights_data = weights
         self.pix_data = self.make_healmap(ra, dec, weights) 
-        print('Number of galaxies', ra.size)
-        print('Weight of galaxies', sum(weights))
 
     def read_randoms(self, ra, dec, weights):
         self.ra_rand=ra
         self.dec_rand=dec
         self.weights_rand=weights
         self.pix_rand = self.make_healmap(ra, dec, weights) 
-        print( 'Number of randoms', ra.size)
-        print( 'Weight of randoms', sum(weights))
 
     def read_systematic_maps_fits(self, nside=256, index=N.array([0, 6]), \
             infits=os.environ['EBOSS_CLUSTERING_DIR']+\
@@ -76,15 +72,18 @@ class MultiFit:
         if nside!=nsideh:
             nallsyst = N.zeros((nsyst, 12*nside**2))
             for i in range(nsyst):
-                nallsyst[i] = hp.ud_grade(allsyst[i], nside, order_in='NESTED', order_out='NESTED')
+                nallsyst[i] = hp.ud_grade(allsyst[i], nside, \
+                                order_in='NESTED', order_out='NESTED')
             allsyst = nallsyst
             
-        syst_maps = {'values':allsyst, 'names':names, 'suffix':suffix, 'nsyst':nsyst, 'nside':nside}
+        syst_maps = {'values':allsyst, 'names':names, 'suffix':suffix, \
+                     'nsyst':nsyst, 'nside':nside}
 
         return syst_maps
 
     def read_systematic_maps_ascii(nside=256, index=N.array([0, 6])):
-        '''Similar to read_systematic_maps_fits() but reads from ASCII files. It's longer! '''
+        '''Similar to read_systematic_maps_fits() but reads from ASCII files. 
+           It's longer! '''
 
         print('Reading healpix maps of systematics:')
 
@@ -125,10 +124,13 @@ class MultiFit:
         for i in range(nsyst):
             print('   %s'%os.path.basename(healpixfiles[i]))
             onemap = N.loadtxt(healpixfiles[i])
-            onemap = hp.ud_grade(onemap, nside, order_in='NESTED', order_out='NESTED')
+            onemap = hp.ud_grade(onemap, nside, order_in='NESTED', \
+                        order_out='NESTED')
             allsyst[i] = onemap
 
-        syst_maps = {'values':allsyst, 'names':names, 'suffix':suffix, 'nsyst':nsyst, 'nside':nside}
+        syst_maps = {'values':allsyst, 'names':names, 'suffix':suffix, \
+                     'nsyst':nsyst, 'nside':nside}
+
 
         return syst_maps
 
@@ -190,7 +192,11 @@ class MultiFit:
         axes.set_yticklabels(names)
         P.colorbar()
         P.tight_layout()
-        
+       
+    def get_map_values(self, index, ra, dec):
+
+        pix = hp.ang2pix(self.nside, (-dec+90.)*N.pi/180, ra*N.pi/180, nest=1)
+        return self.syst_maps['values'][index, pix] 
 
     def make_healmap(self, ra, dec, weights):
         '''Makes healpix map from RA and DEC and weights'''
@@ -241,6 +247,203 @@ class MultiFit:
 
         return chi
 
+    def get_model_weights(self, pars, syst): 
+        ''' Compute weights from parameters and systematic values
+            Input
+            ------
+            pars : (fit_index.size+1) vector containing parameters of fit
+            syst : (N_galaxies, N_syst) array containing systematic values
+        '''
+        edges = self.edges
+        fit_index = self.fit_index
+        weights = pars[0]
+        for i in fit_index:
+            weights += pars[i+1]*(syst[:, i]  -edges[i, 0])/\
+                                 (edges[i, -1]-edges[i, 0]) 
+        return weights
+
+    def prepare_new(self, nbins = 10, \
+                          maps_index = None):
+        if maps_index is None:
+             maps_index = N.arange(self.nsyst)
+
+        nsyst = maps_index.size
+
+        ra_data = self.ra_data
+        dec_data = self.dec_data
+        we_data = self.weights_data
+
+        ra_rand = self.ra_rand
+        dec_rand = self.dec_rand
+        we_rand = self.weights_rand
+
+        n_data = ra_data.size
+        n_rand = ra_rand.size
+
+        #-- assign systematic values to all galaxies
+        syst_data = N.zeros((n_data, maps_index.size))
+        syst_rand = N.zeros((n_rand, maps_index.size))
+        for i in maps_index:
+            syst_data[:, i] = self.get_map_values(i, ra_data, dec_data)
+            syst_rand[:, i] = self.get_map_values(i, ra_rand, dec_rand)
+
+
+        #-- cut galaxies with extreme values of systematics
+        w_data = N.ones(n_data) == 1
+        w_rand = N.ones(n_rand) == 1
+        for i in maps_index:
+            syst_min = N.percentile(syst_rand[:, i], 1)
+            syst_max = N.percentile(syst_rand[:, i], 99)
+            w_data &= (syst_data[:, i] > syst_min) & \
+                      (syst_data[:, i] < syst_max)
+            w_rand &= (syst_rand[:, i] > syst_min) & \
+                      (syst_rand[:, i] < syst_max)
+            
+        syst_data = syst_data[w_data, :]
+        syst_rand = syst_rand[w_rand, :]
+        we_data = we_data[w_data]
+        we_rand = we_rand[w_rand]
+
+        print('Data before/after cut: ', n_data, sum(w_data))
+        print('Rand before/after cut: ', n_rand, sum(w_rand))
+
+        #-- compute histograms        
+        factor = N.sum(we_rand)/N.sum(we_data)
+        edges      = N.zeros((nsyst, nbins+1))
+        centers    = N.zeros((nsyst, nbins))
+        h_data     = N.zeros((nsyst, nbins))
+        h_rand     = N.zeros((nsyst, nbins))
+
+        for i in maps_index:
+            edges[i] = N.linspace(syst_rand[:, i].min(), \
+                                  syst_rand[:, i].max(), nbins+1)
+            centers[i] = 0.5*(edges[i][:-1]+edges[i][1:]) 
+            h_data[i], _ = N.histogram(syst_data[:, i], bins=edges[i], \
+                                       weights=we_data)
+            h_rand[i], _ = N.histogram(syst_rand[:, i], bins=edges[i], \
+                                       weights=we_rand)
+
+        self.maps_index = maps_index
+        self.syst_data = syst_data
+        self.syst_rand = syst_rand
+        self.we_data = we_data
+        self.we_rand = we_rand
+        self.factor = factor
+        self.edges = edges
+        self.centers = centers
+        self.h_data = h_data
+        self.h_rand = h_rand
+        self.dens = h_data/h_rand * factor
+        self.edens = N.sqrt((h_data   /h_rand**2 + \
+                        h_data**2/h_rand**3   )) * factor
+
+    def get_histograms(self, pars=None):
+        syst_data = self.syst_data
+        syst_rand = self.syst_rand
+        we_data = self.we_data
+        we_rand = self.we_rand
+        factor = self.factor
+        edges = self.edges
+        centers = self.centers
+        h_data = self.h_data
+        h_rand = self.h_rand
+        maps_index = self.maps_index
+
+        if pars is None:
+            pars = N.zeros(maps_index.size+1)
+            pars[0] = 1.
+
+        we_model = 1/self.get_model_weights(pars, syst_data)
+
+        for i in maps_index:
+            h_data[i], _ = N.histogram(syst_data[:, i], bins=edges[i], \
+                                       weights=we_data*we_model)
+        self.h_data = h_data
+        self.pars = pars
+        self.dens = h_data/h_rand * factor
+        self.edens = N.sqrt((h_data   /h_rand**2 + \
+                        h_data**2/h_rand**3   )) * factor
+
+    def get_chi2(self, pars=None):
+        self.get_histograms(pars=pars)
+        return N.sum((self.dens-1.)**2/self.edens**2)
+
+    def plot_overdensity(self, maps_index=N.arange(7), ylim=[0.75, 1.25],\
+                         nbinsh=50):
+
+        centers = self.centers
+        names = self.syst_maps['names']
+        maps_index = N.array(maps_index)
+        nsyst = maps_index.size
+        nbins = centers[0].size
+        syst_data = self.syst_data
+   
+        #-- if the fit has been done, plot both before and after fits 
+        if hasattr(self, 'pars'):
+            pars = [None, self.pars]
+        else:
+            pars = [None]
+
+        #-- setting up the windows
+        figsize = (15, 3) if nsyst > 1 else (5,3)
+        f, ax = P.subplots(1, nsyst, sharey=True, figsize=figsize)
+        if nsyst==1:
+            ax = [ax]
+        else:
+            f.subplots_adjust(wspace=0.05, left=0.05, right=0.98, top=0.98, \
+                              bottom=0.15)
+        ax[0].set_ylim(ylim)
+
+        for par in pars:
+            self.get_histograms(pars=par)
+            dens = self.dens
+            edens = self.edens
+            for j, i in enumerate(maps_index):
+             
+                chi2 = N.sum( (dens[i]-1.)**2/edens[i]**2)
+                label = r'$\chi^2_{r}  = %.1f/%d = %.2f$'%\
+                     (chi2, nbins, chi2/nbins)
+
+                ax[j].errorbar(centers[i], dens[i], edens[i], \
+                                    fmt='.', label=label)
+                ax[j].axhline( 1.0, color='k', ls='--')
+                ax[j].locator_params(axis='x', nbins=5, tight=True)
+                
+                #-- add title and legend
+                ax[j].legend(loc=0, numpoints=1, fontsize=10)
+                ax[j].set_xlabel(names[i])
+
+        #-- overplot histogram (normalizing to the 1/3 of the y-axis)
+        for j, i in enumerate(maps_index):
+            h_syst, bins = N.histogram(syst_data[:, i], bins=nbinsh)
+
+            x = 0.5*(bins[:-1]+bins[1:])
+            y = h_syst/h_syst.max()*0.3*(ylim[1]-ylim[0])+ylim[0]
+            ax[j].step(x, y, where='mid', color='g')
+
+
+        ax[0].set_ylabel('Density fluctuations')
+
+    def fit_pars(self, fit_index=None):
+        if fit_index is None:
+            fit_index = self.maps_index
+        self.fit_index = fit_index
+
+        pars0 = N.zeros(fit_index.size+1)
+        pars0[0] = 1.
+        success = False
+        ntries = 0
+        while success is False and ntries < 3:
+            ntries += 1
+            print('Fitting parameters - trial #%d of 3'%ntries)
+            pars_object = minimize(self.get_chi2, pars0, \
+                                   method='Nelder-Mead')
+            print(pars_object['message'])
+            success = pars_object['success']
+            pars0 = pars_object['x']
+
+        self.pars = pars_object['x']
+         
     def prepare(self,  nbins=10):
         
         maps = self.syst_maps['values']
@@ -311,7 +514,6 @@ class MultiFit:
         print(pars_object['message'])
         print(pars_object['success'])
         print(pars_object['x'])
-
         pars1 = pars_object['x']
 
         pars_all0 = N.zeros(self.nsyst+1)
@@ -353,12 +555,14 @@ class MultiFit:
             self.dens0[i] = self.hist_data0[i]/self.hist_rand[i]*self.factor
             self.dens1[i] = self.hist_data1[i]/self.hist_rand[i]*self.factor
             
-            self.edens0[i] = N.sqrt(self.hist_data0[i]   /self.hist_rand[i]**2 + \
-                                    self.hist_data0[i]**2/self.hist_rand[i]**3) * \
-                                    self.factor
-            self.edens1[i] = N.sqrt(self.hist_data1[i]   /self.hist_rand[i]**2 + \
-                                    self.hist_data1[i]**2/self.hist_rand[i]**3) * \
-                                    self.factor
+            self.edens0[i] = N.sqrt( \
+                        self.hist_data0[i]   /self.hist_rand[i]**2 + \
+                        self.hist_data0[i]**2/self.hist_rand[i]**3 ) * \
+                             self.factor
+            self.edens1[i] = N.sqrt( \
+                        self.hist_data1[i]   /self.hist_rand[i]**2 + \
+                        self.hist_data1[i]**2/self.hist_rand[i]**3) * \
+                             self.factor
 
 
     def get_weights(self, ra, dec):
@@ -407,11 +611,13 @@ class MultiFit:
 
             #-- overplot histogram (normalizing to the 1/3 of the y-axis)
             hist_syst, bins = N.histogram(maps[i], \
-                                          bins=N.linspace(self.edges[i, 0], self.edges[i, -1], 80), \
+                                 bins=N.linspace(self.edges[i, 0], \
+                                                 self.edges[i, -1], 80), \
                                           weights=self.pix_rand[self.wmap])
             syst_center = 0.5*(bins[:-1]+bins[1:])
-            ax[i].step(syst_center, hist_syst/hist_syst.max()*0.3*(ylim[1]-ylim[0])+ylim[0], \
-                        where='mid', color='g')
+            ax[i].step(syst_center, \
+                hist_syst/hist_syst.max()*0.3*(ylim[1]-ylim[0])+ylim[0], \
+                where='mid', color='g')
 
             #-- add title and legend
             ax[i].legend(loc=0, numpoints=1, fontsize=8)
@@ -431,11 +637,13 @@ class MultiFit:
             Parameters:
             cat:  data Catalog object
             ran: random Catalog object
-            zs: array containing the edges of the redshift bins. E.g. zs=[0.6, 1.0]
+            zs: array containing the edges of the redshift bins. 
+                E.g. zs=[0.6, 1.0]
             nbins: integer with number of bins per systematic map
             cp, noz, fkp: 1 or 0. Defines which weights are used in the fits
             plotit: 1 or 0, if you want to plot the regression result
-            plotroot: root (no extension) of filename if you want to save these plots
+            plotroot: root (no extension) of filename if you want to save 
+                these plots
             
         '''
 
@@ -464,7 +672,8 @@ class MultiFit:
 
             if plotit:
                 m.plot_density_vs_syst()
-                plotrootzs = plotroot+('-zmin%.2f-zmax%.2f'%(zmin, zmax))*(plotroot!='')
+                plotrootzs = plotroot+('-zmin%.2f-zmax%.2f'%(zmin, zmax))* \
+                            (plotroot!='')
                 if plotrootzs!='':
                     P.savefig(plotrootzs+'.pdf', bbox_inches='tight')
 
