@@ -1,3 +1,4 @@
+from __future__ import print_function
 from scipy.optimize import minimize
 import numpy as N
 import pylab as P
@@ -59,7 +60,7 @@ class xytrans:
             xys[p]  = xymap
             rx = xymap.res_x
             ry = xymap.res_y
-            print p, sum(w), rx['fun'], ry['fun'], rx['success'], ry['success']
+            print(p, sum(w), rx['fun'], ry['fun'], rx['success'], ry['success'])
         return xys
 
     @staticmethod
@@ -69,15 +70,15 @@ class xytrans:
         plates = N.unique( [xy.plate for xy in xys.values()])
         
         header = '# plate  med_ra  med_dec  coeffs_x  coeffs_y'
-        print>>fout, header
+        print(header, file=fout)
 
         for plate in plates:
             xy = xys[plate]
             line = '%d  %f  %f  '%(plate, xy.med_ra, xy.med_dec)
             line+= '  '.join(['%f'%c for c in xy.cx])
             line+='  '+'  '.join(['%f'%c for c in xy.cy])
-            print line
-            print>>fout, line
+            print(line)
+            print(line, file=fout)
 
         fout.close()
 
@@ -107,7 +108,7 @@ class xytrans:
         for plate in N.unique(plates):
             #- get xytrans object corresponding to this plate
             if plate not in xys:
-                print 'plate not found', plate
+                print('plate not found', plate)
                 continue
             w = (plates == plate)
             xfocal[w], yfocal[w] = xys[plate].radec2xy(ra[w], dec[w])
@@ -139,9 +140,9 @@ def assign_plates_and_xy(cat, ran, mask):
     dist = N.sqrt(ran.XFOCAL**2+ran.YFOCAL**2)
     w = (dist>326.5)
     if sum(w)>0:
-        print sum(w), 'galaxies outside plates, distance =', dist[w].min()
+        print(sum(w), 'galaxies outside plates, distance =', dist[w].min())
         bad_sectors = N.unique(ran.SECTOR[w])
-        print 'Sectors where this happens: ', bad_sectors
+        print('Sectors where this happens: ', bad_sectors)
 
     return
 
@@ -153,7 +154,7 @@ def assign_plates_and_xy(cat, ran, mask):
         wd &= (cat.SECTOR!=sec)
         wm &= (mask.sector!=sec)
 
-    print '%.3f of the footprint removed'%(1 - sum(wr)*1./ran.size)
+    print('%.3f of the footprint removed'%(1 - sum(wr)*1./ran.size))
     cat.cut(wd)
     ran.cut(wr)
     mask = Mask.cut(mask, wm)

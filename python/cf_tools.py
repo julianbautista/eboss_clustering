@@ -5,7 +5,6 @@ import os
 import copy 
 import glob
 
-from 
 from scipy.optimize import minimize
 #from astropy.io import fits
 

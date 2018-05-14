@@ -1,3 +1,4 @@
+from __future__ import print_function
 import camb
 import numpy as N
 import pylab as P
@@ -9,7 +10,7 @@ from scipy.ndimage import gaussian_filter1d
 
 class Cosmo:
 
-    def __init__(self, z=0.0, name='challenge', norm_pk=1):
+    def __init__(self, z=0.0, name='challenge', norm_pk=0):
         self.get_matter_power_spectrum(z=z, name=name, norm_pk=norm_pk)
         self.get_correlation_function(update=1)
         self.get_sideband()
@@ -17,7 +18,7 @@ class Cosmo:
         self.set_2d_arrays()
 
     def get_matter_power_spectrum(self, pars=None, z=0.0, non_linear=0, \
-                                        name='challenge', norm_pk=1):
+                                        name='challenge', norm_pk=0):
 
         if pars is None:
             pars = camb.CAMBparams()
@@ -56,10 +57,10 @@ class Cosmo:
 
         
         sigma8 = results.get_sigma8()
-        print 'sigma_8 = ', sigma8[0]
-        print 'hubble = ', results.hubble_parameter(z[0])
-        print 'D_a = ', results.angular_diameter_distance(z[0])
-        print 'rdrag = ', results.get_derived_params()['rdrag']
+        print('sigma_8(z=%.3f) = %.4f'%(z[0],sigma8[0]) )
+        print( 'H(z)   = ', results.hubble_parameter(z[0]) )
+        print( 'D_A(z) = ', results.angular_diameter_distance(z[0]) )
+        print( 'rdrag  = ', results.get_derived_params()['rdrag'] )
 
         if norm_pk:
             pk /= sigma8[0]**2
@@ -227,7 +228,10 @@ class Cosmo:
         sigma_v2 = (1-amu**2)*Sigma_per**2/2+ amu**2*Sigma_par**2/2 
 
         #-- linear Kaiser redshift space distortions with reconstruction damping
-        Kaiser = (1+beta*(1.-N.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2 )**2 
+        if Sigma_rec == 0:
+            Kaiser = (1+beta*amu2d**2 )**2
+        else:
+            Kaiser = (1+beta*(1.-N.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2 )**2 
 
         #-- Fingers of God
         Dnl = 1./( 1 + ak2d**2*amu2d**2*Sigma_stream**2)
@@ -365,9 +369,9 @@ class Cosmo:
         self.DH_rd = 300000./self.H_z/self.r_drag
         self.DM_rd = self.D_A*(1+self.z)/self.r_drag
         self.DV_rd = (300000.*self.z*(self.D_A*(1+self.z))**2/self.H_z)**(1./3)/self.r_drag
-        print 'D_H(z=%.2f)/r_d = %.2f'%(self.z, self.DH_rd)
-        print 'D_M(z=%.2f)/r_d = %.2f'%(self.z, self.DM_rd)
-        print 'D_V(z=%.2f)/r_d = %.2f'%(self.z, self.DV_rd)
+        print('D_H(z=%.2f)/r_d = %.2f'%(self.z, self.DH_rd))
+        print('D_M(z=%.2f)/r_d = %.2f'%(self.z, self.DM_rd))
+        print('D_V(z=%.2f)/r_d = %.2f'%(self.z, self.DV_rd))
 
     @staticmethod
     def get_alphas(cosmo, cosmo_fid):
@@ -377,8 +381,8 @@ class Cosmo:
         #-- Padmanabhan & White 2009
         alpha = at**(2./3.)*ap**(1./3)
         epsilon = (ap/at)**(1./3) - 1
-        print 'at =', at, ' ap =', ap
-        print 'aiso =', alpha, ' epsilon =', epsilon
+        print('at =', at, ' ap =', ap)
+        print('aiso =', alpha, ' epsilon =', epsilon)
         return at, ap, alpha, epsilon   
     
 class Data: 
@@ -390,12 +394,12 @@ class Data:
             r = N.append(r, r)
             cf = N.append(mono, quad)
             if cf.size != coss.shape[0]:
-                print 'Problem: covariance shape is not compatible with mono-quad', \
-                          cf.size, coss.shape[0]
+                print('Problem: covariance shape is not compatible with mono-quad', \
+                          cf.size, coss.shape[0])
         else:
             cf = mono
             if coss.shape[0] == 2*r.size:
-                print 'covariance matrix contains quad, removing it'
+                print('covariance matrix contains quad, removing it')
                 coss = coss[:r.size, :r.size]
 
         w = (r>rmin) & (r<rmax)
@@ -621,8 +625,8 @@ class Chi2:
             if mig.fitarg['fix_'+par]:
                 self.npars -= 1
         self.rchi2min = self.chi2min/(self.ndata-self.npars)
-        print 'chi2 = %.2f   ndata = %d   npars = %d   rchi2 = %.4f'%\
-                (self.chi2min, self.ndata, self.npars, self.rchi2min)
+        print('chi2 = %.2f   ndata = %d   npars = %d   rchi2 = %.4f'%\
+                (self.chi2min, self.ndata, self.npars, self.rchi2min))
 
     def plot_bestfit(self, model_only=0, scale_r=2, label=None):
 
@@ -687,7 +691,7 @@ class Chi2:
                                  frontend=iminuit.frontends.ConsoleFrontend(), \
                                  **init_pars)
             mig.migrad()
-            print 'scanning: %s = %.5f  chi2 = %.4f'%(par_name, value, mig.fval)
+            print( 'scanning: %s = %.5f  chi2 = %.4f'%(par_name, value, mig.fval))
             chi2_grid[i] = mig.fval
 
         return par_grid, chi2_grid
@@ -729,8 +733,8 @@ class Chi2:
                          frontend=iminuit.frontends.ConsoleFrontend(), \
                          **init_pars)
                 mig.migrad()
-                print 'scanning: %s = %.5f   %s = %.5f    chi2 = %.4f'%\
-                        (par_names[0], value0, par_names[1], value1, mig.fval)
+                print( 'scanning: %s = %.5f   %s = %.5f    chi2 = %.4f'%\
+                        (par_names[0], value0, par_names[1], value1, mig.fval))
                 chi2_grid[i, j] = mig.fval
 
         return par_grid0, par_grid1, chi2_grid
@@ -819,7 +823,7 @@ class Chi2:
        
         pars_names = N.sort([p for p in self.best_pars])
         for p in pars_names:
-            print>>fout, p, self.best_pars[p], self.errors[p]
+            print(p, self.best_pars[p], self.errors[p], file=fout)
         fout.close()
 
 

@@ -1,3 +1,4 @@
+from __future__ import print_function
 import numpy as N
 import pylab as P
 import os
@@ -18,8 +19,8 @@ class Recon:
 
         #-- parameters of box
         cosmo = Cosmo(OmegaM=0.31)
-        print 'Num bins:', nbins
-        print 'Smoothing [Mpc/h]:', smooth
+        print('Num bins:', nbins)
+        print('Smoothing [Mpc/h]:', smooth)
 
         #-- getting weights
         cat.weight = cat.get_weights(fkp=1, noz=1, cp=1, syst=1)
@@ -41,8 +42,8 @@ class Recon:
         ran.newy = ran.y*1.
         ran.newz = ran.z*1.
 
-        print 'Randoms min of x, y, z', min(ran.x), min(ran.y), min(ran.z)
-        print 'Randoms max of x, y, z', max(ran.x), max(ran.y), max(ran.z)
+        print('Randoms min of x, y, z', min(ran.x), min(ran.y), min(ran.z))
+        print('Randoms max of x, y, z', max(ran.x), max(ran.y), max(ran.z))
 
         sum_wgal = N.sum(cat.weight)
         sum_wran = N.sum(ran.weight)
@@ -87,8 +88,8 @@ class Recon:
             self.box = box*2.
             self.binsize = 2.*box/self.nbins
         
-        print 'Box size [Mpc/h]:', self.box
-        print 'Bin size [Mpc/h]:', self.binsize
+        print('Box size [Mpc/h]:', self.box)
+        print('Bin size [Mpc/h]:', self.binsize)
 
     #@profile
     def iterate(self, iloop, save_wisdom=1):
@@ -114,20 +115,20 @@ class Recon:
             #psi_y = N.zeros((nbins, nbins, nbins), dtype='complex128')
             #psi_z = N.zeros((nbins, nbins, nbins), dtype='complex128')
             
-            print 'Allocating randoms in cells...'
+            print('Allocating randoms in cells...')
             deltar = self.allocate_gal_cic(ran)
-            print 'Smoothing...'
+            print('Smoothing...')
             deltar = gaussian_filter(deltar, smooth/binsize)
 
             #-- Initialize FFT objects and load wisdom if available
             wisdomFile = "wisdom."+str(nbins)+"."+str(self.nthreads)               
             if os.path.isfile(wisdomFile) :
-                print 'Reading wisdom from ',wisdomFile
+                print('Reading wisdom from ', wisdomFile)
                 g = open(wisdomFile, 'r')
                 wisd=json.load(g)
                 pyfftw.import_wisdom(wisd)
                 g.close()
-            print 'Creating FFTW objects...'
+            print('Creating FFTW objects...')
             fft_obj = pyfftw.FFTW(delta, delta, axes=[0, 1, 2], threads=self.nthreads)
             ifft_obj = pyfftw.FFTW(deltak, psi_x, axes=[0, 1, 2], \
                                    threads=self.nthreads, \
@@ -145,12 +146,12 @@ class Recon:
         #fft_obj = pyfftw.FFTW(delta, delta, threads=self.nthreads, axes=[0, 1, 2])
         #-- Allocate galaxies and randoms to grid with CIC method
         #-- using new positions
-        print 'Allocating galaxies in cells...'
+        print('Allocating galaxies in cells...')
         deltag = self.allocate_gal_cic(cat)
-        print 'Smoothing...'
+        print('Smoothing...')
         deltag = gaussian_filter(deltag, smooth/binsize)
 
-        print 'Computing fluctuations...'
+        print('Computing fluctuations...')
         delta[:]  = deltag - self.alpha*deltar
         w=N.where(deltar>self.ran_min)
         delta[w] = delta[w]/(self.alpha*deltar[w])
@@ -163,7 +164,7 @@ class Recon:
         del(w3)
         del(deltag)
 
-        print 'Fourier transforming delta field...'
+        print('Fourier transforming delta field...')
         norm_fft = 1.#binsize**3 
         fft_obj(input_array=delta, output_array=delta)
         #delta = pyfftw.builders.fftn(\
@@ -176,7 +177,7 @@ class Recon:
         delta[0, 0, 0] = 1 
 
         #-- Estimating the IFFT in Eq. 12 of Burden et al. 2015
-        print 'Inverse Fourier transforming to get psi...'
+        print('Inverse Fourier transforming to get psi...')
         norm_ifft = 1.#(k[1]-k[0])**3/(2*N.pi)**3*nbins**3
 
         deltak[:] = delta*-1j*k[:, None, None]/bias
@@ -207,7 +208,7 @@ class Recon:
                 self.get_shift(cat, psi_x.real, psi_y.real, psi_z.real, \
                                use_newpos=True)
         for i in range(10):
-            print shift_x[i], shift_y[i], shift_z[i], cat.x[i]
+            print(shift_x[i], shift_y[i], shift_z[i], cat.x[i])
 
         #-- for first loop need to approximately remove RSD component 
         #-- from Psi to speed up calculation
@@ -249,7 +250,7 @@ class Recon:
             f = open(wisdomFile, 'w')
             json.dump(wisd,f)
             f.close()
-            print 'Wisdom saved at', wisdomFile
+            print('Wisdom saved at', wisdomFile)
 
     def apply_shifts(self, verbose=1):
         
@@ -268,10 +269,10 @@ class Recon:
         sx = cat.newx-cat.x
         sy = cat.newy-cat.y
         sz = cat.newz-cat.z
-        print 'Shifts stats:'
+        print('Shifts stats:')
         for s in [sx, sy, sz]:
-            print N.std(s), N.percentile(s, 16), N.percentile(s, 84), \
-                    N.min(s), N.max(s)
+            print(N.std(s), N.percentile(s, 16), N.percentile(s, 84), \
+                    N.min(s), N.max(s))
 
 
     def allocate_gal_cic(self, c):

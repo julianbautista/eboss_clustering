@@ -1,3 +1,4 @@
+from __future__ import print_function
 import os
 import sys
 import numpy as N
@@ -32,11 +33,11 @@ class efficiency:
         nplates = self.plates.size
         ngals = sum(self.imatch==1)
         nfail = sum((self.imatch==5)|(self.imatch==7))
-        print 'Nspec   =', nspec 
-        print 'Nplates =', nplates
-        print 'Ngals   =', ngals
-        print 'Nfail   =', nfail
-        print 'Average efficiency =', ngals*1./(nfail+ngals) 
+        print('Nspec   =', nspec )
+        print('Nplates =', nplates)
+        print('Ngals   =', ngals)
+        print('Nfail   =', nfail)
+        print('Average efficiency =', ngals*1./(nfail+ngals) )
 
         self.nspec = nspec
         self.nplates = nplates
@@ -48,7 +49,7 @@ class efficiency:
     def read_spectro_info(self):
 
         info = os.environ['EBOSS_CLUSTERING_DIR']+'/etc/spPlate_spectroinfo_v5_10_0.txt'
-        print 'Using S/N estimates from ', info
+        print('Using S/N estimates from ', info)
         spec = N.loadtxt(info, unpack=0, skiprows=1)
         keys = N.array(open(info).readline().split())
         wk1 = keys == 'SPEC1_I'
@@ -61,7 +62,7 @@ class efficiency:
         for i, p in enumerate(self.plates):
             w = N.where(platescol == p)[0]
             if len(w)==0:
-                print p, 'not found in', info
+                print(p, 'not found in', info)
                 continue
             wp[i] = w[0]
             spectro_sn2[i, 0] = spec[w, wk1] 
@@ -259,8 +260,8 @@ class efficiency:
         npars = coeff.size
         rchi2 = chi2/(ndata-npars)
 
-        print 'Fit of efficiency vs S/N:'
-        print 'chi2 =', chi2, 'ndata =', ndata, 'npars =', npars, 'rchi2 =',rchi2
+        print('Fit of efficiency vs S/N:')
+        print('chi2 =', chi2, 'ndata =', ndata, 'npars =', npars, 'rchi2 =',rchi2)
     
         self.coeff = coeff
         self.pmin = pmin
@@ -421,7 +422,7 @@ class efficiency:
         wl = w & (self.spectro_sn2s < lper)
 
         
-        print sum(wh), sum(wl)
+        print(sum(wh), sum(wl))
         if use_weights:
             weights = self.wcat
         else:
@@ -446,14 +447,14 @@ class efficiency:
         P.errorbar(centers, ratio, dratio, fmt='.') 
 
         rchi2 = N.sum( (ratio-1)**2/dratio**2)#/(ratio.size)
-        print 'rchi2 =', rchi2 
+        print('rchi2 =', rchi2 )
         P.axhline(1., color='k', ls='--', label=r'$\chi^2_r= %.2f$'%rchi2)
 
         for order in [0, 1, 2]:
             coeff = N.polyfit(centers, ratio, order, w=1/dratio)
             model = N.polyval(coeff, centers) 
             rchi2 = N.sum( (ratio-model)**2/dratio**2)#/(ratio.size-order-1)
-            print 'order =', order, 'rchi2 =', rchi2 
+            print('order =', order, 'rchi2 =', rchi2 )
             P.plot(centers, model, label=r'$\chi^2_r= %.2f$'%rchi2)
 
         P.ylim(0.4, 1.8)
@@ -489,7 +490,7 @@ class efficiency:
 
             ww = (sn2 > sn2_low) & (sn2<= sn2_upp)
 
-            print sn2_low, sn2_upp, sum(ww)
+            print(sn2_low, sn2_upp, sum(ww))
 
             hist[i], _ = N.histogram(z[ww], bins=bins, \
                                   weights=weights[ww])
@@ -538,7 +539,7 @@ class efficiency:
             P.errorbar(zcenters, ratio[i], dratio[i], fmt='.') 
             
             rchi2 = N.sum( (ratio[i]-1)**2/dratio[i]**2)#/(ratio.size)
-            print 'rchi2 (null) =', rchi2 
+            print('rchi2 (null) =', rchi2 )
             P.axhline(1., color=colors[i], ls=':', \
                       label=r'$\chi^2_r= %.2f$'%rchi2)
 
@@ -546,7 +547,7 @@ class efficiency:
                 coeff = N.polyfit(zcenters, ratio[i], order, w=1/dratio[i])
                 model = N.polyval(coeff, zcenters) 
                 rchi2 = N.sum( (ratio[i]-model)**2/dratio[i]**2)#/(ratio.size-order-1)
-                print 'order =', order, 'rchi2 =', rchi2 
+                print('order =', order, 'rchi2 =', rchi2 )
                 P.plot(zcenters, model, color=colors[i], \
                         ls=linestyles[order], \
                         label=r'$\chi^2_r= %.2f$'%rchi2)
@@ -681,7 +682,7 @@ def correct_failures_batch():
         script =  'cd %s '%os.environ['EBOSS_CLUSTERING_DIR']
         script = script + '; python python/eff_model.py %d ' %i
         #script = script + '; python bin/downsample_randoms_mocks.py %d ' %i
-        print script
+        print(script)
         qe.append(script)
     qe.commit(hard=True,submit=True)
 

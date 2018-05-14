@@ -82,6 +82,7 @@ def syst_fiber_dep(cat, ran, fit_index=N.array([0])):
     for i in range(nsyst):
         syst_data[:, fit_index[i]] = m.get_map_values(fit_index[i],\
                                          allra, alldec)
+
     for i in range(ngals):
         weights = 1./m.get_model_weights(pars_new[:, i], syst_data) 
 
