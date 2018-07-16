@@ -378,16 +378,21 @@ class Multipoles:
             rr_norm = 0.5*(self.wr**2-self.wr2)
             dr_norm = self.wd*self.wr
             if rebin_r>1:
-                nr = (self.nr-rebin_r)/rebin_r
-                self.mu2d = N.mean(N.reshape(self.mu2d[shift_r:-rebin_r+shift_r], \
+                nr = (self.nr-rebin_r)//rebin_r
+                self.mu2d = N.mean(N.reshape(
+                                self.mu2d[shift_r:-rebin_r+shift_r],
                                              (nr, rebin_r, -1)), axis=1)
-                self.r2d  = N.mean(N.reshape(self.r2d[shift_r:-rebin_r+shift_r],  \
+                self.r2d  = N.mean(N.reshape(
+                                self.r2d[shift_r:-rebin_r+shift_r], 
                                              (nr, rebin_r, -1)), axis=1)
-                self.dd =   N.sum( N.reshape(self.dd[shift_r:-rebin_r+shift_r],   \
+                self.dd =   N.sum( N.reshape(
+                                self.dd[shift_r:-rebin_r+shift_r], 
                                              (nr, rebin_r, -1)), axis=1) 
-                self.dr =   N.sum( N.reshape(self.dr[shift_r:-rebin_r+shift_r],   \
+                self.dr =   N.sum( N.reshape(
+                                self.dr[shift_r:-rebin_r+shift_r], 
                                              (nr, rebin_r, -1)), axis=1) 
-                self.rr =   N.sum( N.reshape(self.rr[shift_r:-rebin_r+shift_r],   \
+                self.rr =   N.sum( N.reshape(
+                                self.rr[shift_r:-rebin_r+shift_r],
                                              (nr, rebin_r, -1)), axis=1) 
                 self.r = N.unique(self.r2d)
                 self.mu = N.unique(self.mu2d)
