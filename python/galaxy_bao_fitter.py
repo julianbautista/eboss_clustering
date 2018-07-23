@@ -205,13 +205,16 @@ class Cosmo:
         if 'aiso' in pars:
             at = pars['aiso']
             ap = pars['aiso']
+            Sigma_par = pars['Sigma_NL']
+            Sigma_per = pars['Sigma_NL']
         else:
             at = pars['at']
             ap = pars['ap']
+            Sigma_par = pars['Sigma_par']
+            Sigma_per = pars['Sigma_per']
         bias = pars['bias']
-        beta = pars['beta']
-        Sigma_par = pars['Sigma_par']
-        Sigma_per = pars['Sigma_per']
+        beta = pars['f']/pars['bias']
+        
         Sigma_stream = pars['Sigma_s']
         Sigma_rec = pars['Sigma_rec']
 
@@ -440,15 +443,20 @@ class Model:
         if fit_iso:
             pars_names = ['aiso']
             pars['aiso'] = 1.0
+            pars_names+= ['Sigma_NL']
+            pars['Sigma_NL'] = 6.
         else:
             pars_names = ['at', 'ap']
             pars['at'] = 1.0
             pars['ap'] = 1.0
-        pars_names += ['bias', 'beta', 'Sigma_per', 'Sigma_par', 'Sigma_s', 'Sigma_rec']
+            pars_names += ['Sigma_per', 'Sigma_par']
+            pars['Sigma_per'] = 6.
+            pars['Sigma_par'] = 10.
+        #pars_names += ['bias', 'beta', 'Sigma_per', 'Sigma_par', 'Sigma_s', 'Sigma_rec']
+        pars_names += ['bias', 'f', 'Sigma_s', 'Sigma_rec']
         pars['bias'] = 1.0
-        pars['beta'] = 0.4
-        pars['Sigma_per'] = 6.
-        pars['Sigma_par'] = 10.
+        #pars['beta'] = 0.4
+        pars['f'] = 0.82
         pars['Sigma_s'] = 4.
         pars['Sigma_rec'] = 1000.
             
