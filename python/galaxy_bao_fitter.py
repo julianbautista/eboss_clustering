@@ -10,8 +10,9 @@ from scipy.ndimage import gaussian_filter1d
 
 class Cosmo:
 
-    def __init__(self, z=0.0, name='challenge', norm_pk=0):
-        self.get_matter_power_spectrum(z=z, name=name, norm_pk=norm_pk)
+    def __init__(self, z=0.0, name='challenge', norm_pk=0, non_linear=0):
+        self.get_matter_power_spectrum(z=z, name=name, norm_pk=norm_pk, 
+                                       non_linear=non_linear)
         self.get_correlation_function(update=1)
         self.get_sideband()
         self.get_sideband_power()
@@ -431,10 +432,11 @@ class Data:
 
 class Model:
 
-    def __init__(self, fit_broadband=1, bb_min=-2, bb_max=0, name='challenge',\
-                        norm_pk=0, z=0, fit_iso=0, fit_multipoles=0, no_peak=0):
+    def __init__(self, fit_broadband=1, bb_min=-2, bb_max=0, name='challenge',
+                 norm_pk=0, non_linear=0, z=0,
+                 fit_iso=0, fit_multipoles=0, no_peak=0):
 
-        cosmo = Cosmo(z=z, name=name, norm_pk=norm_pk)
+        cosmo = Cosmo(z=z, name=name, norm_pk=norm_pk, non_linear=non_linear)
 
         #-- define parameter dictionary
         pars = {}

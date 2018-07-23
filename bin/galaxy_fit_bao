@@ -21,6 +21,9 @@ parser.add_argument('--z', help='Redshift of power spectrum', \
 parser.add_argument('--not_norm_pk', 
                     help='Do NOT normalize the power spectrum to integral one',
                     action='store_true', default=False)
+parser.add_argument('--non_linear_pk', 
+                    help='Compute non-linear P(k) using CAMB Halofit', 
+                    action='store_true', default=False)
 parser.add_argument('--cosmology',
                     help='Name of cosmological parameters. Examples: '+
                     'challenge, qpm, planck, outerim', default='challenge')
@@ -146,8 +149,8 @@ data = Data(m.r, m.mono, m.coss,  quad=quad,
 
 
 model = Model(fit_broadband=fit_broadband, fit_multipoles=fit_quad, 
-              name=args.cosmology, norm_pk=norm_pk, z=z, 
-              fit_iso=fit_iso, no_peak=0, 
+              name=args.cosmology, norm_pk=norm_pk, non_linear=args.non_linear_pk, 
+              z=z, fit_iso=fit_iso, no_peak=0, 
               bb_min=args.bb_min, bb_max=args.bb_max)
 
 chi2 = Chi2(data=data, model=model)
@@ -164,6 +167,7 @@ if fit_nopeak:
     model_nopeak = Model(fit_broadband=fit_broadband, 
                          fit_multipoles=fit_quad,
                          name=args.cosmology, norm_pk=norm_pk, 
+                         non_linear=args.non_linear_pk, 
                          z=z, fit_iso=fit_iso, no_peak=1)  
     chi2_nopeak = Chi2(data=data, model=model_nopeak)
     chi2_nopeak.fit(fixes=fixes, priors=priors, limits=limits)
