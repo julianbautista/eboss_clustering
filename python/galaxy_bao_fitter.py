@@ -126,7 +126,6 @@ class Cosmo:
         w_peak = (r>peak_range[0])&(r<peak_range[1])
         xi_sideband[w_peak] = N.polyval(coeff, r[w_peak])/r[w_peak]**3
 
-
         self.xi_sideband = xi_sideband
         self.peak_range = peak_range
 
@@ -247,10 +246,10 @@ class Cosmo:
         pk2d_out *= Dnl**2 * Kaiser #[:, None]
         pk2d_out /= (at**2*ap)
 
-        pk_mult = N.zeros((ell_max/2+1, k.size))
+        pk_mult = N.zeros((ell_max//2+1, k.size))
         dmu = N.gradient(mu)
         for ell in range(0, ell_max+2, 2):
-            pk_mult[ell/2] = (2.*ell+1.) * N.sum( pk2d_out * \
+            pk_mult[ell//2] = (2.*ell+1.) * N.sum( pk2d_out * \
                              self.Legendre(ell, mu)[:, None] * dmu[:, None], axis=0)  
 
         self.pars = pars.copy()
@@ -275,10 +274,10 @@ class Cosmo:
         ell_max = xi_mult.shape[0]*2
 
         for ell in range(0, ell_max, 2):
-            rout, xiout = fftlog.HankelTransform(k, pk_mult[ell/2], q=1.5, mu=0.5+ell, \
+            rout, xiout = fftlog.HankelTransform(k, pk_mult[ell//2], q=1.5, mu=0.5+ell, \
                                                  output_r_power=-3, output_r=r, r0=r0)
             norm = 1/(2*N.pi)**1.5 * (-1)**(ell/2)
-            xi_mult[ell/2] = xiout*norm 
+            xi_mult[ell//2] = xiout*norm 
 
         return rout, xi_mult
 
@@ -305,7 +304,7 @@ class Cosmo:
 
         P.figure(figsize=(6, 5))
         pars = pars0.copy()
-        for i, sigma_rec in enumerate([0., 15.0, 1000.]):
+        for i, sigma_rec in enumerate([0., 5.0, 10.]):
             pars['Sigma_rec'] = sigma_rec
             xi_mult = cosmo.get_multipoles_2d(r, pars)
             for j in range(2):
@@ -350,7 +349,7 @@ class Cosmo:
             
         P.figure(figsize=(6, 5))
         pars = pars0.copy()
-        for i, sig in enumerate([[6, 10], [8, 8], [4., 7]]):
+        for i, sig in enumerate([[6, 10], [8, 8], [0., 0]]):
             pars['Sigma_per'] = sig[0]
             pars['Sigma_par'] = sig[1]
             xi_mult = cosmo.get_multipoles_2d(r, pars)
