@@ -39,6 +39,13 @@ class Cosmo:
                                    omch2=0.1197, \
                                    YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
                 pars.InitPower.set_params(As=2.198e-09, ns=0.9655)
+            elif name == 'outerim':
+                pars.set_cosmology(H0=71., ombh2=0.022584, \
+                                   omch2=0.10848, \
+                                   YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.0,
+                                    num_massive_neutrinos=0)
+                pars.InitPower.set_params(As=2.224615e-09, ns=0.963)
+                
 
         pars.set_dark_energy()
         
@@ -387,14 +394,15 @@ class Cosmo:
 class Data: 
 
     def __init__(self, r, mono, coss, quad=None, rmin=40., rmax=180., \
-                    nmocks=1):
+                    nmocks=None):
 
         if quad is not None:
             r = N.append(r, r)
             cf = N.append(mono, quad)
             if cf.size != coss.shape[0]:
-                print('Problem: covariance shape is not compatible with mono-quad', \
-                          cf.size, coss.shape[0])
+                print('Problem: covariance shape is not compatible '+
+                      'with mono-quad', \
+                      cf.size, coss.shape[0])
         else:
             cf = mono
             if coss.shape[0] == 2*r.size:
@@ -414,7 +422,7 @@ class Data:
         self.cf = cf
         self.coss = coss
         self.icoss = N.linalg.inv(coss)
-        if nmocks>1:
+        if nmocks:
             correction = (1 - (cf.size + 1.)/(nmocks-1))
             self.icoss *= correction
 
@@ -573,7 +581,7 @@ class Chi2:
         chi2 = N.dot(residual, N.dot(inv_cov, residual))
 
         if self.priors:
-            for key in self.priors.iterkeys():
+            for key in self.priors.keys():
                 mean = self.priors[key][0]
                 sig = self.priors[key][1]
                 chi2 += ((pars[key]-mean)/sig)**2
@@ -583,19 +591,18 @@ class Chi2:
     def fit(self, limits=None, fixes=None, priors=None):
 
         init_pars = {}
-        for par in self.model.pars.iteritems():
-            name = par[0]
-            value = par[1]
-            init_pars[name] = value
-            init_pars['error_'+name] = abs(value)/10. if value!=0 else 0.1
+        for par in self.model.pars:
+            value = self.model.pars[par]
+            init_pars[par] = value
+            init_pars['error_'+par] = abs(value)/10. if value!=0 else 0.1
        
         self.fixes = fixes
         if fixes:
-            for key in fixes.iterkeys():
+            for key in fixes.keys():
                 init_pars[key] = fixes[key]
                 init_pars['fix_'+key] = True 
         if limits:
-            for key in limits.iterkeys():
+            for key in limits.keys():
                 init_pars['limit_'+key] = (limits[key][0], limits[key][1])
 
 
@@ -666,7 +673,7 @@ class Chi2:
     def scan(self, par_name='alpha', par_min=0.8, par_max=1.2, par_nsteps=400):
 
         init_pars = {}
-        for par in self.model.pars.iteritems():
+        for par in self.model.pars.items():
             name = par[0]
             value = par[1]
             init_pars[name] = value
@@ -701,7 +708,7 @@ class Chi2:
                 par_nsteps=[40, 40] ):
 
         init_pars = {}
-        for par in self.model.pars.iteritems():
+        for par in self.model.pars.items():
             name = par[0]
             value = par[1]
             init_pars[name] = value
