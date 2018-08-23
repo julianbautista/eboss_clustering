@@ -370,8 +370,9 @@ class Recon:
     def cart_to_radecz(self, x, y, z):
 
         dist = N.sqrt(x**2+y**2+z**2)
-        dec = N.arcsin(z/dist)*180./N.pi
-        ra = N.arctan(x/y)*180./N.pi + 180 
+        dec = 90 - N.degrees(np.arccos(z / dist))
+        ra = N.degrees(N.arctan2(y, x))
+        ra[ra < 0] += 360
         redshift = self.cosmo.get_redshift(dist)
         return ra, dec, redshift
 
