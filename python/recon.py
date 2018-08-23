@@ -174,7 +174,7 @@ class Recon:
         #-- delta/k**2 
         k = fftfreq(self.nbins, d=binsize)*2*N.pi
         delta /= k[:, None, None]**2 + k[None, :, None]**2 + k[None, None, :]**2
-        delta[0, 0, 0] = 1 
+        delta[0, 0, 0] = 0 #-- was 1. (changed just it case) 
 
         #-- Estimating the IFFT in Eq. 12 of Burden et al. 2015
         print('Inverse Fourier transforming to get psi...')
