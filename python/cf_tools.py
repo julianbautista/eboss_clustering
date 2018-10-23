@@ -484,10 +484,12 @@ class Multipoles:
         else:
             P.plot(r, y1, label=label, color=color, alpha=alpha)
         if scale_r == 0:
-            P.ylabel(r'$\xi_0$$')
+            P.ylabel(r'$\xi_0$')
         else:
             P.ylabel(r'$r^{%d} \xi_0$ [$h^{%d}$ Mpc$^{%d}]$'%\
                      (scale_r, -scale_r, scale_r))
+        P.axhline(0, color='k', ls=':')
+
         if quad:
             P.subplot(212)
             if errors:
@@ -495,10 +497,11 @@ class Multipoles:
             else:
                 P.plot(r, y2, color=color, alpha=alpha)
             if scale_r == 0:
-                P.ylabel(r'$\xi_2$$')
+                P.ylabel(r'$\xi_2$')
             else:
                 P.ylabel(r'$r^{%d} \xi_2$ [$h^{%d}$ Mpc$^{%d}]$'%\
                          (scale_r, -scale_r, scale_r))
+            P.axhline(0, color='k', ls=':')
         P.xlabel(r'$r$ [$h^{-1}$ Mpc]')
 
     def plot_many(self, label=None, quad=0, errors=1, \

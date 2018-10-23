@@ -78,7 +78,8 @@ parser.add_argument('--scale_cov', type=float, default=1.0, \
 
 args = parser.parse_args()
 
-for arg in args.__dict__:
+argnames = np.sort(np.array([arg for arg in args.__dict__]))
+for arg in argnames:
     print(arg, ':', args.__dict__[arg])
 
 
