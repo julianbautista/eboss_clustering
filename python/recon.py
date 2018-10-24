@@ -1,6 +1,5 @@
 from __future__ import print_function
 import numpy as np
-import pylab as P
 import os
 import json
 from numba import jit
@@ -78,12 +77,12 @@ class Recon:
     def compute_box(self, padding=200., optimize_box=1):
     
         if optimize_box:
-            dx = max(self.ran.x)-min(self.ran.x)
-            dy = max(self.ran.y)-min(self.ran.y)
-            dz = max(self.ran.z)-min(self.ran.z)
-            x0 = 0.5*(max(self.ran.x)+min(self.ran.x)) 
-            y0 = 0.5*(max(self.ran.y)+min(self.ran.y)) 
-            z0 = 0.5*(max(self.ran.z)+min(self.ran.z)) 
+            dx = np.max(self.ran.x)-np.min(self.ran.x)
+            dy = np.max(self.ran.y)-np.min(self.ran.y)
+            dz = np.max(self.ran.z)-np.min(self.ran.z)
+            x0 = 0.5*(np.max(self.ran.x)+np.min(self.ran.x)) 
+            y0 = 0.5*(np.max(self.ran.y)+np.min(self.ran.y)) 
+            z0 = 0.5*(np.max(self.ran.z)+np.min(self.ran.z)) 
 
             box = max([dx, dy, dz])+2*padding
             self.xmin = x0-box/2 
