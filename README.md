@@ -5,15 +5,18 @@ Repo containing code to:
 - compute systematic weights using multi-linear regression: systematics.py
 - compute spectroscopic completeness model: eff_model.py
 - fit BAO on galaxy correlation function: galaxy_bao_fitter.py
+- reconstruction algorithm based on Burden et al. 2015 : recon.py 
 
 Requirements:
 
-- python 2.7.11
+- python 3.6
 - numpy 1.12.1
 - scipy 0.19.0
 - camb 0.1.2
-- astropy 1.3
+- astropy 3.0
 - healpy 1.9.1
-- mangle 3.2
-- iminuit 1.2
+
+- mangle 3.2 (for catalog generation only)
+- iminuit (for fitter only)
+- pyfftw (for reconstruction only)
 
