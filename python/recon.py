@@ -1,20 +1,33 @@
 from __future__ import print_function
-import numpy as N
+import numpy as np
 import pylab as P
 import os
 import json
 from numba import jit
 from scipy.ndimage.filters import gaussian_filter
 from scipy.fftpack import fftn, ifftn, fftshift, fftfreq
-from ebosscat import Catalog, Cosmo
+from ebosscat import Cosmo
 import pyfftw
+
+
+class MiniCat:
+
+    def __init__(self, ra, dec, z, we):
+        self.ra = ra
+        self.dec = dec
+        self.Z = z
+        self.we = we
+        self.size = ra.size
 
 class Recon:
 
-    def __init__(self, cat, ran, bias=2.3, f=0.817, smooth=15., nbins=256, \
-                 redshift_max=1.0, padding=200., opt_box=1, nthreads=1):
+    def __init__(self, \
+                 data_ra, data_dec, data_z, data_we, \
+                 rand_ra, rand_dec, rand_z, rand_we, \
+                 bias=2.3, f=0.817, smooth=15., nbins=256, \
+                 redshift_min=0.6, redshift_max=1.0, \
+                 padding=200., opt_box=1, nthreads=1):
 
-        plotit=0
         beta = f/bias
 
         #-- parameters of box
@@ -22,22 +35,21 @@ class Recon:
         print('Num bins:', nbins)
         print('Smoothing [Mpc/h]:', smooth)
 
-        #-- getting weights
-        cat.weight = cat.get_weights(fkp=1, noz=1, cp=1, syst=1)
-        ran.weight = ran.get_weights(fkp=1, noz=0, cp=0, syst=0)
+        dat = MiniCat(data_ra, data_dec, data_z, data_we)
+        ran = MiniCat(rand_ra, rand_dec, rand_z, rand_we)
 
         #-- computing cartesian positions
-        cat.dist = cosmo.get_comoving_distance(cat.Z)
+        dat.dist = cosmo.get_comoving_distance(dat.Z)
         ran.dist = cosmo.get_comoving_distance(ran.Z)
-        cat.x = cat.dist * N.cos(cat.DEC*N.pi/180)*N.sin(cat.RA*N.pi/180)
-        cat.y = cat.dist * N.cos(cat.DEC*N.pi/180)*N.cos(cat.RA*N.pi/180)
-        cat.z = cat.dist * N.sin(cat.DEC*N.pi/180) 
-        cat.newx = cat.x*1.
-        cat.newy = cat.y*1.
-        cat.newz = cat.z*1.
-        ran.x = ran.dist * N.cos(ran.DEC*N.pi/180)*N.sin(ran.RA*N.pi/180)
-        ran.y = ran.dist * N.cos(ran.DEC*N.pi/180)*N.cos(ran.RA*N.pi/180)
-        ran.z = ran.dist * N.sin(ran.DEC*N.pi/180) 
+        dat.x = dat.dist * np.cos(dat.dec*np.pi/180)*np.cos(dat.ra*np.pi/180)
+        dat.y = dat.dist * np.cos(dat.dec*np.pi/180)*np.sin(dat.ra*np.pi/180)
+        dat.z = dat.dist * np.sin(dat.dec*np.pi/180) 
+        dat.newx = dat.x*1.
+        dat.newy = dat.y*1.
+        dat.newz = dat.z*1.
+        ran.x = ran.dist * np.cos(ran.dec*np.pi/180)*np.cos(ran.ra*np.pi/180)
+        ran.y = ran.dist * np.cos(ran.dec*np.pi/180)*np.sin(ran.ra*np.pi/180)
+        ran.z = ran.dist * np.sin(ran.dec*np.pi/180) 
         ran.newx = ran.x*1.
         ran.newy = ran.y*1.
         ran.newz = ran.z*1.
@@ -45,8 +57,8 @@ class Recon:
         print('Randoms min of x, y, z', min(ran.x), min(ran.y), min(ran.z))
         print('Randoms max of x, y, z', max(ran.x), max(ran.y), max(ran.z))
 
-        sum_wgal = N.sum(cat.weight)
-        sum_wran = N.sum(ran.weight)
+        sum_wgal = np.sum(dat.we)
+        sum_wran = np.sum(ran.we)
         alpha = sum_wgal/sum_wran
         ran_min = 0.01*sum_wran/ran.size
 
@@ -55,7 +67,7 @@ class Recon:
         self.f=f
         self.beta=beta
         self.smooth=smooth
-        self.cat = cat
+        self.dat = dat
         self.ran = ran
         self.ran_min = ran_min
         self.alpha=alpha
@@ -92,8 +104,8 @@ class Recon:
         print('Bin size [Mpc/h]:', self.binsize)
 
     #@profile
-    def iterate(self, iloop, save_wisdom=1):
-        cat = self.cat
+    def iterate(self, iloop, save_wisdom=0):
+        dat = self.dat
         ran = self.ran
         smooth = self.smooth
         binsize = self.binsize
@@ -109,11 +121,11 @@ class Recon:
             psi_x  = pyfftw.empty_aligned((nbins, nbins, nbins), dtype='complex128')
             psi_y  = pyfftw.empty_aligned((nbins, nbins, nbins), dtype='complex128')
             psi_z  = pyfftw.empty_aligned((nbins, nbins, nbins), dtype='complex128')
-            #delta = N.zeros((nbins, nbins, nbins), dtype='complex128')
-            #deltak= N.zeros((nbins, nbins, nbins), dtype='complex128')
-            #psi_x = N.zeros((nbins, nbins, nbins), dtype='complex128')
-            #psi_y = N.zeros((nbins, nbins, nbins), dtype='complex128')
-            #psi_z = N.zeros((nbins, nbins, nbins), dtype='complex128')
+            #delta = np.zeros((nbins, nbins, nbins), dtype='complex128')
+            #deltak= np.zeros((nbins, nbins, nbins), dtype='complex128')
+            #psi_x = np.zeros((nbins, nbins, nbins), dtype='complex128')
+            #psi_y = np.zeros((nbins, nbins, nbins), dtype='complex128')
+            #psi_z = np.zeros((nbins, nbins, nbins), dtype='complex128')
             
             print('Allocating randoms in cells...')
             deltar = self.allocate_gal_cic(ran)
@@ -147,21 +159,21 @@ class Recon:
         #-- Allocate galaxies and randoms to grid with CIC method
         #-- using new positions
         print('Allocating galaxies in cells...')
-        deltag = self.allocate_gal_cic(cat)
+        deltag = self.allocate_gal_cic(dat)
         print('Smoothing...')
         deltag = gaussian_filter(deltag, smooth/binsize)
 
         print('Computing fluctuations...')
         delta[:]  = deltag - self.alpha*deltar
-        w=N.where(deltar>self.ran_min)
+        w=np.where(deltar>self.ran_min)
         delta[w] = delta[w]/(self.alpha*deltar[w])
-        w2=N.where((deltar<=self.ran_min)) 
+        w2=np.where((deltar<=self.ran_min)) 
         delta[w2] = 0.
-        w3=N.where(delta>N.percentile(delta[w].ravel(), 99))
-        delta[w3] = 0.
+        #w3=np.where(delta>np.percentile(delta[w].ravel(), 99))
+        #delta[w3] = 0.
         del(w)
         del(w2)
-        del(w3)
+        #del(w3)
         del(deltag)
 
         print('Fourier transforming delta field...')
@@ -172,13 +184,13 @@ class Recon:
         #                threads=self.nthreads, overwrite_input=True)()
 
         #-- delta/k**2 
-        k = fftfreq(self.nbins, d=binsize)*2*N.pi
-        delta /= k[:, None, None]**2 + k[None, :, None]**2 + k[None, None, :]**2
+        k = fftfreq(self.nbins, d=binsize)*2*np.pi
+        delta /= (k[:, None, None]**2 + k[None, :, None]**2 + k[None, None, :]**2 + 1e-100)
         delta[0, 0, 0] = 0 #-- was 1. (changed just it case) 
 
         #-- Estimating the IFFT in Eq. 12 of Burden et al. 2015
         print('Inverse Fourier transforming to get psi...')
-        norm_ifft = 1.#(k[1]-k[0])**3/(2*N.pi)**3*nbins**3
+        norm_ifft = 1.#(k[1]-k[0])**3/(2*np.pi)**3*nbins**3
 
         deltak[:] = delta*-1j*k[:, None, None]/bias
         ifft_obj(input_array=deltak, output_array=psi_x)
@@ -205,32 +217,32 @@ class Recon:
 
         #-- removing RSD from galaxies
         shift_x, shift_y, shift_z =  \
-                self.get_shift(cat, psi_x.real, psi_y.real, psi_z.real, \
+                self.get_shift(dat, psi_x.real, psi_y.real, psi_z.real, \
                                use_newpos=True)
         for i in range(10):
-            print(shift_x[i], shift_y[i], shift_z[i], cat.x[i])
+            print(shift_x[i], shift_y[i], shift_z[i], dat.x[i])
 
         #-- for first loop need to approximately remove RSD component 
         #-- from Psi to speed up calculation
         #-- first loop so want this on original positions (cp), 
         #-- not final ones (np) - doesn't actualy matter
         if iloop==0:
-            psi_dot_rhat = (shift_x*cat.x + \
-                            shift_y*cat.y + \
-                            shift_z*cat.z ) /cat.dist
-            shift_x-= beta/(1+beta)*psi_dot_rhat*cat.x/cat.dist
-            shift_y-= beta/(1+beta)*psi_dot_rhat*cat.y/cat.dist
-            shift_z-= beta/(1+beta)*psi_dot_rhat*cat.z/cat.dist
+            psi_dot_rhat = (shift_x*dat.x + \
+                            shift_y*dat.y + \
+                            shift_z*dat.z ) /dat.dist
+            shift_x-= beta/(1+beta)*psi_dot_rhat*dat.x/dat.dist
+            shift_y-= beta/(1+beta)*psi_dot_rhat*dat.y/dat.dist
+            shift_z-= beta/(1+beta)*psi_dot_rhat*dat.z/dat.dist
         #-- remove RSD from original positions (cp) of 
         #-- galaxies to give new positions (np)
         #-- these positions are then used in next determination of Psi, 
         #-- assumed to not have RSD.
         #-- the iterative procued then uses the new positions as 
         #-- if they'd been read in from the start
-        psi_dot_rhat = (shift_x*cat.x+shift_y*cat.y+shift_z*cat.z)/cat.dist
-        cat.newx = cat.x + f*psi_dot_rhat*cat.x/cat.dist 
-        cat.newy = cat.y + f*psi_dot_rhat*cat.y/cat.dist 
-        cat.newz = cat.z + f*psi_dot_rhat*cat.z/cat.dist 
+        psi_dot_rhat = (shift_x*dat.x+shift_y*dat.y+shift_z*dat.z)/dat.dist
+        dat.newx = dat.x + f*psi_dot_rhat*dat.x/dat.dist 
+        dat.newy = dat.y + f*psi_dot_rhat*dat.y/dat.dist 
+        dat.newz = dat.z + f*psi_dot_rhat*dat.z/dat.dist 
 
         self.deltar = deltar
         self.delta = delta
@@ -247,6 +259,10 @@ class Recon:
         wisdomFile = "wisdom."+str(nbins)+"."+str(self.nthreads)               
         if iloop==0 and save_wisdom and not os.path.isfile(wisdomFile):
             wisd=pyfftw.export_wisdom()
+            #-- convert from binary to ascii (new in python3 somehow)
+            wisd = ( wisd[0].decode('ascii'), 
+                     wisd[1].decode('ascii'), 
+                     wisd[2].decode('ascii'))
             f = open(wisdomFile, 'w')
             json.dump(wisd,f)
             f.close()
@@ -254,25 +270,25 @@ class Recon:
 
     def apply_shifts(self, verbose=1):
         
-        for c in [self.cat, self.ran]:
+        for c in [self.dat, self.ran]:
             shift_x, shift_y, shift_z =  \
                 self.get_shift(c, \
                     self.psi_x.real, self.psi_y.real, self.psi_z.real, \
-                    use_newpos=False)
+                    use_newpos=True)
             c.newx += shift_x 
             c.newy += shift_y 
             c.newz += shift_z
 
     def summary(self):
 
-        cat = self.cat
-        sx = cat.newx-cat.x
-        sy = cat.newy-cat.y
-        sz = cat.newz-cat.z
+        dat = self.dat
+        sx = dat.newx-dat.x
+        sy = dat.newy-dat.y
+        sz = dat.newz-dat.z
         print('Shifts stats:')
         for s in [sx, sy, sz]:
-            print(N.std(s), N.percentile(s, 16), N.percentile(s, 84), \
-                    N.min(s), N.max(s))
+            print(np.std(s), np.percentile(s, 16), np.percentile(s, 84), \
+                    np.min(s), np.max(s))
 
 
     def allocate_gal_cic(self, c):
@@ -294,19 +310,19 @@ class Recon:
         ddy = ypos-j
         ddz = zpos-k
 
-        delta = N.zeros((nbins, nbins, nbins))
-        edges = [N.linspace(0, nbins, nbins+1), \
-                 N.linspace(0, nbins, nbins+1), \
-                 N.linspace(0, nbins, nbins+1)]
+        delta = np.zeros((nbins, nbins, nbins))
+        edges = [np.linspace(0, nbins, nbins+1), \
+                 np.linspace(0, nbins, nbins+1), \
+                 np.linspace(0, nbins, nbins+1)]
 
         for ii in range(2):
             for jj in range(2):
                 for kk in range(2):
-                    pos = N.array([i+ii, j+jj, k+kk]).transpose()
+                    pos = np.array([i+ii, j+jj, k+kk]).transpose()
                     weight = ( ((1-ddx)+ii*(-1+2*ddx))*\
                                ((1-ddy)+jj*(-1+2*ddy))*\
-                               ((1-ddz)+kk*(-1+2*ddz)) ) *c.weight
-                    delta_t, edges = N.histogramdd(pos, \
+                               ((1-ddz)+kk*(-1+2*ddz)) ) *c.we
+                    delta_t, edges = np.histogramdd(pos, \
                                      bins=edges, weights=weight) 
                     delta+=delta_t
 
@@ -336,9 +352,9 @@ class Recon:
         ddy = ypos-j
         ddz = zpos-k
 
-        shift_x = N.zeros(c.size)
-        shift_y = N.zeros(c.size)
-        shift_z = N.zeros(c.size)
+        shift_x = np.zeros(c.size)
+        shift_y = np.zeros(c.size)
+        shift_z = np.zeros(c.size)
 
         for ii in range(2):
             for jj in range(2):
@@ -356,12 +372,12 @@ class Recon:
     def export_cart(self, root):
         
         lines = ['%f %f %f %f'%(xx, yy, zz, ww) for (xx, yy, zz, ww) \
-               in zip(self.cat.x, self.cat.y, self.cat.z, self.cat.weight)]
+               in zip(self.dat.x, self.dat.y, self.dat.z, self.dat.we)]
         fout = open(root+'.dat.txt', 'w') 
         fout.write('\n'.join(lines))
         fout.close()
         lines = ['%f %f %f %f'%(xx, yy, zz, ww) for (xx, yy, zz, ww) \
-               in zip(self.ran.x, self.ran.y, self.ran.z, self.ran.weight)]
+               in zip(self.ran.x, self.ran.y, self.ran.z, self.ran.we)]
         fout = open(root+'.ran.txt', 'w') 
         fout.write('\n'.join(lines))
         fout.close()
@@ -369,9 +385,9 @@ class Recon:
 
     def cart_to_radecz(self, x, y, z):
 
-        dist = N.sqrt(x**2+y**2+z**2)
-        dec = 90 - N.degrees(np.arccos(z / dist))
-        ra = N.degrees(N.arctan2(y, x))
+        dist = np.sqrt(x**2+y**2+z**2)
+        dec = 90 - np.degrees(np.arccos(z / dist))
+        ra = np.degrees(np.arctan2(y, x))
         ra[ra < 0] += 360
         redshift = self.cosmo.get_redshift(dist)
         return ra, dec, redshift
