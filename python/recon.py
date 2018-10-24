@@ -25,7 +25,6 @@ class Recon:
                  data_ra, data_dec, data_z, data_we, \
                  rand_ra, rand_dec, rand_z, rand_we, \
                  bias=2.3, f=0.817, smooth=15., nbins=256, \
-                 redshift_min=0.6, redshift_max=1.0, \
                  padding=200., opt_box=1, nthreads=1):
 
         beta = f/bias
