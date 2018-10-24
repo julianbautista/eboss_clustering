@@ -416,7 +416,7 @@ class Data:
         w = (r>rmin) & (r<rmax)
         r = r[w]
         if quad is not None:
-            r = r[:r.size/2]
+            r = r[:r.size//2]
 
         cf = cf[w]
         coss = coss[:, w]

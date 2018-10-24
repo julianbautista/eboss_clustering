@@ -3,7 +3,7 @@
 import sys
 import argparse
 import os
-import numpy as N 
+import numpy as np 
 
 from galaxy_bao_fitter import *
 from cf_tools import Multipoles

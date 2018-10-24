@@ -1,6 +1,8 @@
-from ebosscat import Catalog
-from recon import Recon
 import argparse
+import numpy as np
+from astropy.table import Table
+from astropy.io import fits
+from recon import Recon
 
 parser = argparse.ArgumentParser()
 
@@ -23,14 +25,17 @@ parser.add_argument('--bias', \
     help='Estimate of the bias of the sample', type=float, required=True)
 parser.add_argument('--f', \
     help='Estimate of the growth rate', type=float, required=True, default=0.817)
+parser.add_argument('--cmass', \
+    help='Add this option to work with eboss+cmass catalogs', type=bool, default=False)
 args = parser.parse_args()
-print args
+
+argnames = np.sort(np.array([arg for arg in args.__dict__]))
+for arg in argnames:
+    print(arg, ':', args.__dict__[arg])
 
 
 
 
-cat = Catalog(args.data) 
-ran = Catalog(args.randoms) 
 
 nbins=args.nbins
 nthreads=args.nthreads
@@ -42,24 +47,36 @@ bias = args.bias
 f = args.f
 opt_box = 1 #optimize box dimensions
 
-#-- selecting galaxies
-w = (cat.IMATCH==1)|(cat.IMATCH==2)|(cat.IMATCH==101)|(cat.IMATCH==102)
-w = w & ((cat.Z>=zmin)&(cat.Z<=zmax))
-cat.cut(w)
-wr = ((ran.Z>=zmin)&(ran.Z<=zmax))
-ran.cut(wr)
 
-rec = Recon(cat, ran, nbins=nbins, smooth=smooth, f=f, bias=bias, \
+#-- Reading data and randoms
+data = Table.read(args.data)
+rand = Table.read(args.randoms)
+
+#-- Defining weights
+if args.cmass:
+    data_we = data['WEIGHT_FKP']*data['WEIGHT_ALL_NOFKP']
+    rand_we = rand['WEIGHT_FKP']*rand['WEIGHT_ALL_NOFKP']
+else:
+    data_we = data['WEIGHT_FKP']*data['WEIGHT_SYSTOT']*\
+              data['WEIGHT_NOZ']*data['WEIGHT_CP']
+    rand_we = rand['WEIGHT_FKP']*rand['WEIGHT_SYSTOT']*\
+              rand['WEIGHT_NOZ']*rand['WEIGHT_CP']
+
+
+#-- Performing reconstruction
+rec = Recon(data['RA'], data['DEC'], data['Z'], data_we, \
+            rand['RA'], rand['DEC'], rand['Z'], rand_we, \
+            nbins=nbins, smooth=smooth, f=f, bias=bias, \
             padding=padding, opt_box=opt_box, nthreads=nthreads)
 for i in range(args.niter):
     rec.iterate(i)
 rec.apply_shifts()
 rec.summary()
 
-cat.RA, cat.DEC, cat.Z = rec.get_new_radecz(rec.cat) 
-ran.RA, ran.DEC, ran.Z = rec.get_new_radecz(rec.ran) 
+data['RA'], data['DEC'], data['Z'] = rec.get_new_radecz(rec.dat)
+rand['RA'], rand['DEC'], rand['Z'] = rec.get_new_radecz(rec.ran) 
 
-cat.export(args.output+'.dat.fits')
-ran.export(args.output+'.ran.fits')
+data.write(args.output+'.dat.fits', format='fits', overwrite=True)
+rand.write(args.output+'.ran.fits', format='fits', overwrite=True)
 
 
