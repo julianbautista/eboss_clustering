@@ -4,6 +4,8 @@ from astropy.io import fits
 from astropy.table import Table
 
 def assign_specsn2(dat):
+    ''' Assigns the correct value of spectrograph S/N for 
+        the three cameras '''
 
     w1 = (dat['FIBERID']>=1)&(dat['FIBERID']<=500)
     w2 = (dat['FIBERID']>=501)&(dat['FIBERID']<=1000)
@@ -11,6 +13,21 @@ def assign_specsn2(dat):
         dat['SPECSN2_%s'%c] = np.zeros(len(dat))
         dat['SPECSN2_%s'%c][w1] = dat['SPEC1_%s'%c][w1]
         dat['SPECSN2_%s'%c][w2] = dat['SPEC2_%s'%c][w2]
+
+def where_all_spectra(dat):
+
+    wall = (dat['IMATCH']==1)|\
+           (dat['IMATCH']==4)|\
+           (dat['IMATCH']==7)|\
+           (dat['IMATCH']==9)
+    return wall
+
+def where_good_spectra(dat):
+
+    wgood = (dat['IMATCH']==1)|\
+            (dat['IMATCH']==4)|\
+            (dat['IMATCH']==9)
+    return wgood
 
 def bin_redshift_failures(dat, field='FIBERID', nbins=500, weights=None,
                           wall=None, wgood=None):
@@ -30,17 +47,11 @@ def bin_redshift_failures(dat, field='FIBERID', nbins=500, weights=None,
 
     #-- select objects with observed spectra
     if wall is None:
-        wall = (dat['IMATCH']==1)|\
-               (dat['IMATCH']==4)|\
-               (dat['IMATCH']==7)|\
-               (dat['IMATCH']==9)
+        wall = where_all_spectra(dat) 
 
     #-- select objects with confident classification
     if wgood is None:
-        wgood = (dat['IMATCH']==1)|\
-                (dat['IMATCH']==4)|\
-                (dat['IMATCH']==9)
-
+        wgood = where_good_spectra(dat)
 
     #-- count galaxies in bins of field
     x = dat[field]
@@ -59,7 +70,20 @@ def error_of_ratio_poisson(a, b):
     return np.sqrt( a/b**2 + a**2/b**3)
 
 def fit_specsn(dat, band='I', nbins=1000):
+    ''' Fits for model of efficiencies as a functino of SPECSN
+        as in Eq. 8 of Bautista et al. 2018 
+        http://adsabs.harvard.edu/abs/2018ApJ...863..110B
 
+        Input
+        -----
+        dat: astropy.table.Table object with the catalog
+        
+        Output
+        ------
+        coeff: array with best-fit coefficients, to be used 
+               with get_specsn_efficiency 
+
+    '''
     bins, ngood, nall = bin_redshift_failures(dat, 
                             field='SPECSN2_%s'%band, nbins=nbins)
     x = 0.5*(bins[1:]+bins[:-1])
@@ -88,6 +112,7 @@ def fit_specsn(dat, band='I', nbins=1000):
     return coeff
 
 def get_specsn_efficiency(coeff, specsn2):
+    ''' Model used to fit efficiencies as function of SPECSN2'''
     return 1-1/(1+np.polyval(coeff, specsn2))
     
 def get_specsn_weights(dat, band='I'):
@@ -125,27 +150,27 @@ def get_fiberid_weights(dat, nbins=100):
     return weight_noz 
 
 def plot_failures(dat):
+    ''' Plot redshift efficiencies as function of 
+        several fields before/after corrections '''
+
+    fields = ['FIBERID', 
+              'XFOCAL', 
+              'YFOCAL', 
+              'SPECSN2_I']
 
     weight_noz1, coeff = get_specsn_weights(dat)
     weight_noz2 = get_fiberid_weights(dat)
     weight_noz = weight_noz1*weight_noz2
 
     #-- normalize to overall redshift weight
-    wall = (dat['IMATCH']==1)|\
-           (dat['IMATCH']==4)|\
-           (dat['IMATCH']==7)|\
-           (dat['IMATCH']==9)
-    wgood =(dat['IMATCH']==1)|\
-           (dat['IMATCH']==4)|\
-           (dat['IMATCH']==9)
-
+    wall = where_all_spectra(dat)
+    wgood = where_good_spectra(dat)
     eff_before = np.sum(wgood)/np.sum(wall)
     eff_after = np.sum(wgood*weight_noz)/np.sum(wall)
     weight_noz *= 1./eff_after 
 
     #-- plot before/after corrections 
-    for field in ['FIBERID', 'XFOCAL', 'YFOCAL', 
-                  'SPECSN2_I' ]:
+    for field in fields: 
 
         plt.figure(figsize=(5,4))
 
@@ -183,26 +208,33 @@ def plot_failures(dat):
     return weight_noz
 
 
-def get_weights(dat):
-    
+def get_weights_noz(dat):
+    '''  Computes redshit failure weights from catalog
+         based on IMATCH == 7 (failures) 
+
+         Currently correcting for FIBERID and SPECSN2_I.
+
+         A new column "WEIGHT_NOZ" is created with the 
+         weights. 
+
+         Input
+         -----
+         dat: astropy.table.Table object with catalog
+
+    '''
     if 'SPECSN2_I' not in dat.colnames:
         assign_specsn(dat)
     
     #-- fix dependency with spectro S/N
-    weight_noz1 = get_specsn_weights(dat)
+    weight_noz1, coeff = get_specsn_weights(dat)
     #-- fix dependency with FIBERID
     weight_noz2 = get_fiberid_weights(dat)
 
     #-- final weight is simply the product 
     weight_noz = weight_noz1*weight_noz2
 
-    wall = (dat['IMATCH']==1)|\
-           (dat['IMATCH']==4)|\
-           (dat['IMATCH']==7)|\
-           (dat['IMATCH']==9)
-    wgood =(dat['IMATCH']==1)|\
-           (dat['IMATCH']==4)|\
-           (dat['IMATCH']==9)
+    wall = where_all_spectra(dat)
+    wgood = where_good_spectra(dat)
 
     eff_before = np.sum(wgood)/np.sum(wall)
     eff_after = np.sum(wgood*weight_noz)/np.sum(wall)
