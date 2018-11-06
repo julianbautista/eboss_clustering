@@ -390,9 +390,9 @@ ran['WEIGHT_SYSTOT_JB'] = m.get_weights(ran['RA'], ran['DEC'])
 if args.plot_deltas:
     print('Plotting deltas versus systematics')
     m.plot_overdensity(ylim=[0.5, 1.5])
-    plt.show()
     if args.save_plot_deltas:
         plt.savefig(args.save_plot_deltas)
+    plt.show()
 
 if args.output:
     print('Exporting catalogs to ', args.output)
