@@ -21,7 +21,8 @@ class MultiLinearFit:
                              'PSF_Z', 
                              'W1_MED', 
                              'W1_COVMED'], 
-                       fit_maps=None, nbins_per_syst=10):
+                       fit_maps=None, nbins_per_syst=10,
+                       infits=None):
         ''' Systematic fits 
 
         ''' 
@@ -41,7 +42,10 @@ class MultiLinearFit:
         print('Using the following maps:      ', maps)
         print('Fitting for the following maps:', fit_maps)
 
-        if not self.read_systematics_maps(maps=maps): sys.exit()
+        if infits is None:
+            infits='/mnt/lustre/bautista/software/eboss_clustering/etc/'+\
+                   'SDSS_WISE_imageprop_nside512.fits'
+        if not self.read_systematics_maps(maps=maps, infits=infits): sys.exit()
  
         self.fit_index = fit_index
 
@@ -75,24 +79,11 @@ class MultiLinearFit:
         w = np.isnan(syst)
         syst[w] = hp.UNSEEN
 
-        #####-- this is from old code and might be useful         
-        ##-- normalize star density into units per deg2 
-        #allsyst[0] *= (12*nside**2)/(4*np.pi*(180**2/np.pi**2))
-        #
-        ##-- modify nside of maps if needed
-        #if nside!=nsideh:
-        #    nallsyst = np.zeros((nmaps, 12*nside**2))
-        #    for i in range(nmaps):
-        #        nallsyst[i] = hp.ud_grade(allsyst[i], nside, \
-        #                        order_in='NESTED', order_out='NESTED')
-        #    allsyst = nallsyst
-
         self.maps = syst 
         self.maps_names = maps
         self.maps_suffix = maps
         self.nside = hp.npix2nside(npix) 
         self.nmaps = nsyst
-        self.nest = False
         return True
 
     def plot_systematic_map(self, index):
@@ -100,15 +91,14 @@ class MultiLinearFit:
         syst = self.maps[index]
         name = self.maps_names[index]
         w = syst != hp.UNSEEN
-        hp.mollview(syst, nest=self.nest, title=name, 
+        hp.mollview(syst, title=name, 
                     min=np.percentile(syst[w], 1), 
                     max=np.percentile(syst[w], 99.))
 
     def get_pix(self, ra, dec):
         return hp.ang2pix(self.nside, \
                           (-dec+90.)*np.pi/180, \
-                          ra*np.pi/180, \
-                          nest=self.nest)
+                          ra*np.pi/180)
 
     def get_map_values(self, index, ra, dec):
         pix = self.get_pix(ra, dec)
@@ -161,8 +151,8 @@ class MultiLinearFit:
         data_we = data_we[w_data]
         rand_we = rand_we[w_rand]
 
-        print('Number of galaxies before/after cut: ', n_data, data_we.size)
-        print('Number of randoms  before/after cut: ', n_rand, rand_we.size)
+        print('Number of galaxies before/after cutting outliers: ', n_data, data_we.size)
+        print('Number of randoms  before/after cutting outliers: ', n_rand, rand_we.size)
 
         #-- compute histograms        
         factor = np.sum(rand_we)/np.sum(data_we)
@@ -321,6 +311,8 @@ class MultiLinearFit:
         
 
 
+
+#-- Main starts here
 parser = argparse.ArgumentParser()
 
 parser.add_argument('-d', '--data',    
@@ -340,6 +332,8 @@ parser.add_argument('--read_maps', nargs='+',
              'W1_COVMED'])
 parser.add_argument('--fit_maps', nargs='+', 
     help='List of maps to be fitted. Default fits for all maps.', default=None)
+parser.add_argument('--input_fits', default=None,
+    help='Input fits file with systematics maps')
 parser.add_argument('--nbins_per_syst', type=int, default=20, 
     help='Number of bins per systematic quantity')
 parser.add_argument('--zmin', type=float, default=0.6,
@@ -348,6 +342,8 @@ parser.add_argument('--zmax', type=float, default=1.0,
     help='Maximum redshift')
 parser.add_argument('--plot_deltas', action='store_true', default=False,
     help='If set, plots the delta vs systematic')
+parser.add_argument('--save_plot_deltas', default=None,
+    help='Filename for saving plot of deltas vs systematic (e.g. delta-vs-syst.pdf)')
 args = parser.parse_args()
 
 print('Reading galaxies from ',args.data)
@@ -370,18 +366,20 @@ wr = (ran['Z']>=args.zmin)&\
      (ran['Z']<=args.zmax)&\
      (ran['COMP_BOSS']>0.5)
 
+#-- Defining RA, DEC and weights
 data_ra, data_dec = dat['RA'][wd], dat['DEC'][wd]
 rand_ra, rand_dec = ran['RA'][wr], ran['DEC'][wr]
-
 data_we = (dat['WEIGHT_CP']*dat['WEIGHT_FKP'])[wd]
 rand_we = (ran['COMP_BOSS'])[wr]
 
+#-- This is where the magic happens.
 m = MultiLinearFit(
         data_ra=data_ra, data_dec=data_dec, data_we=data_we,
         rand_ra=rand_ra, rand_dec=rand_dec, rand_we=rand_we,
-        maps=args.read_maps, 
-        fit_maps=args.fit_maps, 
-        nbins_per_syst=args.nbins_per_syst)
+        maps = args.read_maps, 
+        fit_maps = args.fit_maps, 
+        nbins_per_syst = args.nbins_per_syst,
+        infits = args.input_fits)
 m.fit_pars()
 
 
@@ -393,6 +391,8 @@ if args.plot_deltas:
     print('Plotting deltas versus systematics')
     m.plot_overdensity(ylim=[0.5, 1.5])
     plt.show()
+    if args.save_plot_deltas:
+        plt.savefig(args.save_plot_deltas)
 
 if args.output:
     print('Exporting catalogs to ', args.output)
