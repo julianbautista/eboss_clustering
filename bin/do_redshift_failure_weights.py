@@ -69,7 +69,7 @@ def error_of_ratio_poisson(a, b):
 
     return np.sqrt( a/b**2 + a**2/b**3)
 
-def fit_specsn(dat, band='I', nbins=1000):
+def fit_specsn(dat, band='I', nbins=500):
     ''' Fits for model of efficiencies as a functino of SPECSN
         as in Eq. 8 of Bautista et al. 2018 
         http://adsabs.harvard.edu/abs/2018ApJ...863..110B
@@ -149,7 +149,7 @@ def get_fiberid_weights(dat, nbins=100):
 
     return weight_noz 
 
-def plot_failures(dat):
+def plot_failures(dat, weight_noz=None, coeff=None):
     ''' Plot redshift efficiencies as function of 
         several fields before/after corrections '''
 
@@ -158,16 +158,18 @@ def plot_failures(dat):
               'YFOCAL', 
               'SPECSN2_I']
 
-    weight_noz1, coeff = get_specsn_weights(dat)
-    weight_noz2 = get_fiberid_weights(dat)
-    weight_noz = weight_noz1*weight_noz2
-
-    #-- normalize to overall redshift weight
     wall = where_all_spectra(dat)
     wgood = where_good_spectra(dat)
-    eff_before = np.sum(wgood)/np.sum(wall)
-    eff_after = np.sum(wgood*weight_noz)/np.sum(wall)
-    weight_noz *= 1./eff_after 
+
+    if weight_noz is None:
+        weight_noz1, coeff = get_specsn_weights(dat)
+        weight_noz2 = get_fiberid_weights(dat)
+        weight_noz = weight_noz1*weight_noz2
+
+        #-- normalize to overall redshift weight
+        eff_before = np.sum(wgood)/np.sum(wall)
+        eff_after = np.sum(wgood*weight_noz)/np.sum(wall)
+        weight_noz *= 1./eff_after 
 
     #-- plot before/after corrections 
     for field in fields: 
@@ -175,17 +177,21 @@ def plot_failures(dat):
         plt.figure(figsize=(5,4))
 
         #-- plot before corrections
-        bins, ng, na = bin_redshift_failures(dat, field=field, nbins=100,
+        if field == 'SPECSN2_I': 
+            nbins = 500
+        else: 
+            nbins = 100
+        bins, ng, na = bin_redshift_failures(dat, field=field, nbins=nbins,
                                              wgood=wgood, wall=wall)
         centers = 0.5*(bins[1:]+bins[:-1])
-        w = na>50
+        w = (na>50)&(na-ng>0)
         x = centers[w]
         y = ng[w]/na[w]
         dy = error_of_ratio_poisson(na[w]-ng[w], na[w])
         plt.errorbar(x, y, dy, fmt='.', label=r'No $w_{noz}$')
 
         #-- plot after corrections
-        bins, ng, na = bin_redshift_failures(dat, field=field, nbins=100, 
+        bins, ng, na = bin_redshift_failures(dat, field=field, nbins=nbins, 
                                              wgood=wgood, wall=wall,
                                              weights=weight_noz )
         y = ng[w]/na[w]
@@ -195,7 +201,7 @@ def plot_failures(dat):
         plt.errorbar(x, y, dy, fmt='.', label=r'With $w_{noz}$')
 
         #-- plot model for the SPECSN dependency
-        if field=='SPECSN2_I':
+        if field=='SPECSN2_I' and coeff is not None:
             xmodel = np.linspace(x.min(), x.max(), 100)
             ymodel = get_specsn_efficiency(coeff, xmodel)
             plt.plot(xmodel, ymodel, label='Best-fit model')
