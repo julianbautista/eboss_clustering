@@ -393,7 +393,6 @@ ran = Table.read(ran_file)
 
 print('Cutting galaxies and randoms between zmin=%.3f and zmax=%.3f'%\
       (args.zmin, args.zmax))
-dat = dat[dat['IMATCH']==1]
 wd = (dat['Z']>=args.zmin)&\
      (dat['Z']<=args.zmax)&\
      (dat['COMP_BOSS']>0.5) 
