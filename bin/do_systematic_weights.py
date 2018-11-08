@@ -56,8 +56,28 @@ class MultiLinearFit:
         self.rand_ra = rand_ra
         self.rand_dec = rand_dec
         self.rand_we = rand_we
+        
+        if data_ra.size != data_dec.size != data_we.size:
+            print('ERROR: data_ra, data_dec, data_we do not have same size')
+            sys.exit()
+        if rand_ra.size != rand_dec.size != rand_we.size:
+            print('ERROR: data_ra, data_dec, data_we do not have same size')
+            sys.exit()
 
         self.prepare(nbins=nbins_per_syst)
+
+    def flux_to_mag(self, flux, band, ebv=None):
+
+        #-- coefs to convert from flux to magnitudes
+        b = np.array([1.4, 0.9, 1.2, 1.8, 7.4])[band]*1e-10
+        mag = -2.5/np.log(10)*(np.arcsinh((flux/1e9)/(2*b)) + np.log(b))
+
+        #-- extinction coefficients for SDSS u, g, r, i, and z bands
+        ext_coeff = np.array([4.239, 3.303,2.285,1.698,1.263])[band]
+        if not ebv is None:
+            mag -= ext_coeff*ebv
+
+        return mag
 
     def read_systematics_maps(self, \
         infits='/mnt/lustre/bautista/software/eboss_clustering/etc/'+\
@@ -65,6 +85,17 @@ class MultiLinearFit:
         maps=None):
         
         a = fits.open(infits)[1].data
+       
+        #-- convert depth
+        a.DEPTH_G = self.flux_to_mag(a.DEPTH_G, 1, ebv=a.EBV)
+        a.DEPTH_R = self.flux_to_mag(a.DEPTH_R, 2, ebv=a.EBV)
+        a.DEPTH_I = self.flux_to_mag(a.DEPTH_I, 3, ebv=a.EBV)
+        a.DEPTH_Z = self.flux_to_mag(a.DEPTH_Z, 4, ebv=a.EBV)
+        #a.DEPTH_G = self.flux_to_mag(a.DEPTH_G, 1)
+        #a.DEPTH_R = self.flux_to_mag(a.DEPTH_R, 2)
+        #a.DEPTH_I = self.flux_to_mag(a.DEPTH_I, 3)
+        #a.DEPTH_Z = self.flux_to_mag(a.DEPTH_Z, 4)
+ 
         nsyst = len(maps)
         npix  = a.size
         syst = np.zeros((nsyst, npix)) 
@@ -76,7 +107,7 @@ class MultiLinearFit:
                 print('ERROR reading %s. Available choices:'%maps[i], a.names) 
                 return False
 
-        w = np.isnan(syst)
+        w = np.isnan(syst)|np.isinf(syst)
         syst[w] = hp.UNSEEN
 
         self.maps = syst 
@@ -140,8 +171,8 @@ class MultiLinearFit:
         w_data = np.ones(n_data) == 1
         w_rand = np.ones(n_rand) == 1
         for i in range(nmaps):
-            syst_min = np.percentile(rand_syst[:, i], 0.5)
-            syst_max = np.percentile(rand_syst[:, i], 99.5)
+            syst_min = np.percentile(rand_syst[:, i], 0.5) #22.4
+            syst_max = np.percentile(rand_syst[:, i], 99.5) #23.8
             w_data &= (data_syst[:, i] > syst_min) & \
                       (data_syst[:, i] < syst_max)
             w_rand &= (rand_syst[:, i] > syst_min) & \
@@ -162,9 +193,10 @@ class MultiLinearFit:
         h_rand     = np.zeros((nmaps, nbins))
 
         for i in range(nmaps):
-            edges[i] = np.linspace(data_syst[:, i].min()-1e-5, \
-                                   data_syst[:, i].max()+1e-5, \
+            edges[i] = np.linspace(data_syst[:, i].min()-1e-7, \
+                                   data_syst[:, i].max()+1e-7, \
                                    nbins+1)
+            #edges[i] = np.linspace(22.4, 23.8, nbins+1)
             centers[i] = 0.5*(edges[i][:-1]+edges[i][1:]) 
             h_data[i], _ = np.histogram(data_syst[:, i], bins=edges[i], \
                                         weights=data_we)
@@ -310,7 +342,8 @@ class MultiLinearFit:
         return 1/self.get_model(self.pars, syst)
         
 
-
+if len(sys.argv)<2:
+    sys.exit()
 
 #-- Main starts here
 parser = argparse.ArgumentParser()
@@ -344,6 +377,8 @@ parser.add_argument('--plot_deltas', action='store_true', default=False,
     help='If set, plots the delta vs systematic')
 parser.add_argument('--save_plot_deltas', default=None,
     help='Filename for saving plot of deltas vs systematic (e.g. delta-vs-syst.pdf)')
+parser.add_argument('--random_fraction', type=float, default=1., 
+    help='Fraction of randoms to be used. Default = 1 (use all of them)')
 args = parser.parse_args()
 
 print('Reading galaxies from ',args.data)
@@ -364,13 +399,14 @@ wd = (dat['Z']>=args.zmin)&\
      (dat['COMP_BOSS']>0.5) 
 wr = (ran['Z']>=args.zmin)&\
      (ran['Z']<=args.zmax)&\
-     (ran['COMP_BOSS']>0.5)
+     (ran['COMP_BOSS']>0.5)&\
+     (np.random.rand(len(ran))<args.random_fraction)
 
 #-- Defining RA, DEC and weights
 data_ra, data_dec = dat['RA'][wd], dat['DEC'][wd]
 rand_ra, rand_dec = ran['RA'][wr], ran['DEC'][wr]
-data_we = (dat['WEIGHT_CP']*dat['WEIGHT_FKP'])[wd]
-rand_we = (ran['COMP_BOSS'])[wr]
+data_we = (dat['WEIGHT_CP']*dat['WEIGHT_FKP']/dat['sector_SSR'])[wd]
+rand_we = (ran['COMP_BOSS'])[wr]#*ran['WEIGHT_FKP'])[wr]
 
 #-- This is where the magic happens.
 m = MultiLinearFit(
