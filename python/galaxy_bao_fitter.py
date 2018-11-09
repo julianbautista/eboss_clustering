@@ -309,9 +309,42 @@ class Cosmo:
 
         cosmo = Cosmo()
         r = N.linspace(40, 180, 100)
-        pars0 = {'ap':1.0, 'at': 1.0, 'bias':1.0, 'beta':0.35, \
-                'Sigma_par':10., 'Sigma_per':6., 'Sigma_s':4., 'Sigma_rec':10000.}
+        pars0 = {'ap':1.0, 'at': 1.0, 'bias':1.0, 'f':0.6, \
+                'Sigma_par':10., 'Sigma_per':6., 'Sigma_s':4., 'Sigma_rec':0.}
         lss = ['-', '--', ':']
+
+        P.figure(figsize=(6, 5))
+        pars = pars0.copy()
+        for i, ap in enumerate([0.95, 1.0, 1.05]):
+            pars['at'] = ap
+            pars['ap'] = ap
+            aiso = ap
+            xi_mult = cosmo.get_multipoles_2d(r, pars)
+            for j in range(2):
+                P.subplot(2, 1, j+1)
+                P.plot(r, xi_mult[j]*r**2, ls=lss[i], color='k', lw=2, \
+                       label=r'$\alpha_{\rm iso} = %.2f$'%aiso)
+                if i==0:
+                    P.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
+        P.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
+        P.legend(loc=0, fontsize=10)
+        
+        P.figure(figsize=(6, 5))
+        pars = pars0.copy()
+        for i, ap in enumerate([0.98, 1.0, 1.02]):
+            pars['at'] = 1./N.sqrt(ap)
+            pars['ap'] = ap
+            epsilon = (ap*N.sqrt(ap))**(1./3)-1
+            xi_mult = cosmo.get_multipoles_2d(r, pars)
+            for j in range(2):
+                P.subplot(2, 1, j+1)
+                P.plot(r, xi_mult[j]*r**2, ls=lss[i], color='k', lw=2, \
+                       label=r'$\epsilon = %.2f$'%epsilon)
+                if i==0:
+                    P.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
+        P.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
+        P.legend(loc=0, fontsize=10)
+
 
         P.figure(figsize=(6, 5))
         pars = pars0.copy()
@@ -328,21 +361,6 @@ class Cosmo:
         P.legend(loc=0, fontsize=10)
         
 
-        P.figure(figsize=(6, 5))
-        pars = pars0.copy()
-        for i, ap in enumerate([0.98, 1.0, 1.02]):
-            pars['at'] = 1./N.sqrt(ap)
-            pars['ap'] = ap
-            epsilon = (ap*N.sqrt(ap))**(1./3)-1
-            xi_mult = cosmo.get_multipoles_2d(r, pars)
-            for j in range(2):
-                P.subplot(2, 1, j+1)
-                P.plot(r, xi_mult[j]*r**2, ls=lss[i], color='k', lw=2, \
-                       label=r'$\epsilon = %.2f$'%epsilon)
-                if i==0:
-                    P.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
-        P.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
-        P.legend(loc=0, fontsize=10)
             
         P.figure(figsize=(6, 5))
         pars = pars0.copy()

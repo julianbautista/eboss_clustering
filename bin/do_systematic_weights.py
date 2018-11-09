@@ -73,7 +73,7 @@ class MultiLinearFit:
         mag = -2.5/np.log(10)*(np.arcsinh((flux/1e9)/(2*b)) + np.log(b))
 
         #-- extinction coefficients for SDSS u, g, r, i, and z bands
-        ext_coeff = np.array([4.239, 3.303,2.285,1.698,1.263])[band]
+        ext_coeff = np.array([4.239, 3.303, 2.285, 1.698, 1.263])[band]
         if not ebv is None:
             mag -= ext_coeff*ebv
 
@@ -83,9 +83,11 @@ class MultiLinearFit:
         infits='/mnt/lustre/bautista/software/eboss_clustering/etc/'+\
                'SDSS_WISE_imageprop_nside512.fits', \
         maps=None):
-        
+      
+        print('Reading maps from:', infits)  
         a = fits.open(infits)[1].data
-       
+        print('Available maps:', a.names)
+
         #-- convert depth
         a.DEPTH_G = self.flux_to_mag(a.DEPTH_G, 1, ebv=a.EBV)
         a.DEPTH_R = self.flux_to_mag(a.DEPTH_R, 2, ebv=a.EBV)
@@ -395,10 +397,12 @@ print('Cutting galaxies and randoms between zmin=%.3f and zmax=%.3f'%\
       (args.zmin, args.zmax))
 wd = (dat['Z']>=args.zmin)&\
      (dat['Z']<=args.zmax)&\
-     (dat['COMP_BOSS']>0.5) 
+     (dat['COMP_BOSS']>0.5)&\
+     (dat['sector_SSR']>0.5) 
 wr = (ran['Z']>=args.zmin)&\
      (ran['Z']<=args.zmax)&\
      (ran['COMP_BOSS']>0.5)&\
+     (ran['sector_SSR']>0.5)&\
      (np.random.rand(len(ran))<args.random_fraction)
 
 #-- Defining RA, DEC and weights
@@ -425,6 +429,7 @@ ran['WEIGHT_SYSTOT_JB'] = m.get_weights(ran['RA'], ran['DEC'])
 if args.plot_deltas:
     print('Plotting deltas versus systematics')
     m.plot_overdensity(ylim=[0.5, 1.5])
+    plt.tight_layout()
     if args.save_plot_deltas:
         plt.savefig(args.save_plot_deltas)
     plt.show()
