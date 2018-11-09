@@ -89,14 +89,11 @@ class MultiLinearFit:
         print('Available maps:', a.names)
 
         #-- convert depth
-        a.DEPTH_G = self.flux_to_mag(a.DEPTH_G, 1, ebv=a.EBV)
-        a.DEPTH_R = self.flux_to_mag(a.DEPTH_R, 2, ebv=a.EBV)
-        a.DEPTH_I = self.flux_to_mag(a.DEPTH_I, 3, ebv=a.EBV)
-        a.DEPTH_Z = self.flux_to_mag(a.DEPTH_Z, 4, ebv=a.EBV)
-        #a.DEPTH_G = self.flux_to_mag(a.DEPTH_G, 1)
-        #a.DEPTH_R = self.flux_to_mag(a.DEPTH_R, 2)
-        #a.DEPTH_I = self.flux_to_mag(a.DEPTH_I, 3)
-        #a.DEPTH_Z = self.flux_to_mag(a.DEPTH_Z, 4)
+        if 'DEPTH_G' in a.names:
+            a.DEPTH_G = self.flux_to_mag(a.DEPTH_G, 1, ebv=a.EBV)
+            a.DEPTH_R = self.flux_to_mag(a.DEPTH_R, 2, ebv=a.EBV)
+            a.DEPTH_I = self.flux_to_mag(a.DEPTH_I, 3, ebv=a.EBV)
+            a.DEPTH_Z = self.flux_to_mag(a.DEPTH_Z, 4, ebv=a.EBV)
  
         nsyst = len(maps)
         npix  = a.size
@@ -183,6 +180,8 @@ class MultiLinearFit:
         rand_syst = rand_syst[w_rand, :]
         data_we = data_we[w_data]
         rand_we = rand_we[w_rand]
+        self.data_ra = self.data_ra[w_data]
+        self.data_dec = self.data_dec[w_data]
 
         print('Number of galaxies before/after cutting outliers: ', n_data, data_we.size)
         print('Number of randoms  before/after cutting outliers: ', n_rand, rand_we.size)
