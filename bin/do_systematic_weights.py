@@ -22,7 +22,7 @@ class MultiLinearFit:
                              'W1_MED', 
                              'W1_COVMED'], 
                        fit_maps=None, nbins_per_syst=10,
-                       infits=None):
+                       infits=None, nest=False):
         ''' Systematic fits 
 
         ''' 
@@ -46,7 +46,8 @@ class MultiLinearFit:
             infits='/mnt/lustre/bautista/software/eboss_clustering/etc/'+\
                    'SDSS_WISE_imageprop_nside512.fits'
         if not self.read_systematics_maps(maps=maps, infits=infits): sys.exit()
- 
+        self.nest = nest
+
         self.fit_index = fit_index
 
         self.data_ra = data_ra
@@ -123,12 +124,14 @@ class MultiLinearFit:
         w = syst != hp.UNSEEN
         hp.mollview(syst, title=name, 
                     min=np.percentile(syst[w], 1), 
-                    max=np.percentile(syst[w], 99.))
+                    max=np.percentile(syst[w], 99.), 
+                    nest=self.nest)
 
     def get_pix(self, ra, dec):
         return hp.ang2pix(self.nside, \
                           (-dec+90.)*np.pi/180, \
-                          ra*np.pi/180)
+                          ra*np.pi/180,
+                          nest=self.nest)
 
     def get_map_values(self, index, ra, dec):
         pix = self.get_pix(ra, dec)
@@ -334,6 +337,12 @@ class MultiLinearFit:
         rchi2_after = chi2_after/(ndata-npars)
         print('After fit:  chi2/(ndata-npars) = %.2f/(%d-%d) = %.3f'%\
                (chi2_after, ndata, npars, rchi2_after ))
+        self.chi2_before = chi2_before
+        self.rchi2_before = rchi2_before
+        self.ndata = ndata
+        self.npars = npars
+        self.chi2_after = chi2_after
+        self.rchi2_after = rchi2_after
          
     def get_weights(self, ra, dec):
         pix  = self.get_pix(ra, dec)
@@ -380,6 +389,8 @@ parser.add_argument('--save_plot_deltas', default=None,
     help='Filename for saving plot of deltas vs systematic (e.g. delta-vs-syst.pdf)')
 parser.add_argument('--random_fraction', type=float, default=1., 
     help='Fraction of randoms to be used. Default = 1 (use all of them)')
+parser.add_argument('--nest', action='store_true', default=False, 
+    help='Include this option if systematic maps in input_fits are in NESTED scheme')
 args = parser.parse_args()
 
 print('Reading galaxies from ',args.data)
@@ -417,7 +428,8 @@ m = MultiLinearFit(
         maps = args.read_maps, 
         fit_maps = args.fit_maps, 
         nbins_per_syst = args.nbins_per_syst,
-        infits = args.input_fits)
+        infits = args.input_fits,
+        nest=args.nest)
 m.fit_pars()
 
 
