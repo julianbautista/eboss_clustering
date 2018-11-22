@@ -27,20 +27,9 @@ class MultiLinearFit:
 
         ''' 
 
-        #-- If fit_maps is None, fit all maps 
-        #-- Otherwise, define indices of maps to be fitted
-        if fit_maps is None:
-            fit_maps = maps
-            fit_index = np.arange(len(maps))
-        else:
-            fit_index = []
-            for i in range(len(maps)):
-                if maps[i] in fit_maps:
-                    fit_index.append(i)
-            fit_index = np.array(fit_index)
 
         print('Using the following maps:      ', maps)
-        print('Fitting for the following maps:', fit_maps)
+        #print('Fitting for the following maps:', fit_maps)
 
         if infits is None:
             infits='/mnt/lustre/bautista/software/eboss_clustering/etc/'+\
@@ -48,7 +37,6 @@ class MultiLinearFit:
         if not self.read_systematics_maps(maps=maps, infits=infits): sys.exit()
         self.nest = nest
 
-        self.fit_index = fit_index
 
         self.data_ra = data_ra
         self.data_dec= data_dec
@@ -225,6 +213,7 @@ class MultiLinearFit:
         self.dens = h_data/h_rand * factor
         self.edens = np.sqrt((h_data   /h_rand**2 + \
                               h_data**2/h_rand**3   )) * factor
+        self.chi2_before = np.sum((self.dens-1.)**2/self.edens**2)
 
     def get_histograms(self, pars=None):
         data_syst = self.data_syst
@@ -234,16 +223,15 @@ class MultiLinearFit:
         h_index = self.h_index
 
         if pars is None:
-            pars = np.zeros(self.fit_index.size+1)
-            pars[0] = 1.
-
-        we_model = 1/self.get_model(pars, data_syst)
+            we_model = data_we*0+1
+        else:
+            we_model = 1/self.get_model(pars, data_syst)
 
         #-- doing histograms with np.bincount, it's faster
         for i in range(self.nmaps):
             h_data[i] = np.bincount(h_index[:, i], weights=data_we*we_model)
 
-        if pars[0] != 1.:
+        if not pars is None:
             self.pars = pars
         self.h_data = h_data
 
@@ -308,8 +296,22 @@ class MultiLinearFit:
 
         ax[0].set_ylabel('Density fluctuations')
 
-    def fit_pars(self):
+    def fit_pars(self, fit_maps=None):
 
+        #-- If fit_maps is None, fit all maps 
+        #-- Otherwise, define indices of maps to be fitted
+        if fit_maps is None:
+            fit_maps = self.maps_names
+            fit_index = np.arange(len(fit_maps))
+        else:
+            maps = self.maps_names
+            fit_index = []
+            for i in range(len(maps)):
+                if maps[i] in fit_maps:
+                    fit_index.append(i)
+            fit_index = np.array(fit_index)
+        self.fit_index = fit_index
+        
         pars0 = np.zeros(self.fit_index.size+1)
         pars0[0] = 1.
 
@@ -426,11 +428,10 @@ m = MultiLinearFit(
         data_ra=data_ra, data_dec=data_dec, data_we=data_we,
         rand_ra=rand_ra, rand_dec=rand_dec, rand_we=rand_we,
         maps = args.read_maps, 
-        fit_maps = args.fit_maps, 
         nbins_per_syst = args.nbins_per_syst,
         infits = args.input_fits,
         nest=args.nest)
-m.fit_pars()
+m.fit_pars(fit_maps=args.fit_maps)
 
 
 print('Assigning weights to galaxies and randoms')
