@@ -43,8 +43,16 @@ parser.add_argument('--fit_quad', help='Use quadrupole', \
                     action='store_true', default=False)
 parser.add_argument('--fit_iso', help='Perform isotropic fit', \
                     action='store_true', default=False)
+parser.add_argument('--fit_cross', help='Perform cross-correlation fit with two bias values', 
+                    action='store_true', default=False)
+parser.add_argument('--fit_beam', help='Perform fit of parallel damping (beam effect)', \
+                    action='store_true', default=False)
 parser.add_argument('--plotit', help='Plot best-fit model', \
                     action='store_true', default=False)
+parser.add_argument('--save_plot', help='Saves plot into this file (will fill filename with fit parameters)',
+                    type=str, default=None)
+parser.add_argument('--scale_r_plot', help='Plot correlatons times r^(scale_r_plot)', 
+                    type=int, default=2)
 parser.add_argument('--cute', help='Input is in CUTE format', \
                     action='store_true', default=False)
 parser.add_argument('--rebin_r', \
@@ -149,19 +157,24 @@ data = Data(m.r, m.mono, m.coss,  quad=quad,
             nmocks=nmocks, rmax=rmax, rmin=rmin)
 
 
-model = Model(fit_broadband=fit_broadband, fit_multipoles=fit_quad, 
-              name=args.cosmology, norm_pk=norm_pk, non_linear=args.non_linear_pk, 
+model = Model(fit_broadband=fit_broadband, 
+              fit_multipoles=fit_quad, 
+              name=args.cosmology, 
+              norm_pk=norm_pk, 
+              non_linear=args.non_linear_pk, 
               z=z, fit_iso=fit_iso, no_peak=0, 
+              fit_cross=args.fit_cross, 
+              fit_beam=args.fit_beam,
               bb_min=args.bb_min, bb_max=args.bb_max)
 
 chi2 = Chi2(data=data, model=model)
 chi2.fit(fixes=fixes, priors=priors, limits=limits) 
 chi2.export(output+'.pars')
 
-if fit_quad:
-    fout=open(output+'.at.ap.cov', 'w')
-    print(chi2.covariance['at', 'ap']/(chi2.errors['at']*chi2.errors['ap']), file=fout)
-    fout.close()
+#if fit_quad and 'at' in chi2.errors and 'ap' in chi2.errors:
+    #fout=open(output+'.at.ap.cov', 'w')
+    #print(chi2.covariance['at', 'ap']/(chi2.errors['at']*chi2.errors['ap']), file=fout)
+#    fout.close()
 
 
 if fit_nopeak:
@@ -245,17 +258,18 @@ if args.scan_nopeak:
 
 
 if plotit:
-    P.figure()
-    chi2.plot_bestfit(label=r'$\chi^2 = %.2f$'%chi2.chi2min)
+    plt.figure()
+    chi2.plot_bestfit(label=r'$\chi^2 = %.2f$'%chi2.chi2min, scale_r=args.scale_r_plot)
     if fit_nopeak:
-        chi2_nopeak.plot_bestfit(model_only=1, \
+        chi2_nopeak.plot_bestfit(model_only=1, scale_r=args.scale_r_plot, \
                 label=r'$\chi^2_{\rm no \ peak} = %.2f$'%chi2_nopeak.chi2min)
     if fit_quad:
-        P.subplot(211)
-    P.legend(loc=0)
-    P.show()
-    #if save:
-    #    savefig('plots/bestfit-%s.pdf'%output_base, bbox_inches='tight')
+        plt.subplot(211)
+    plt.legend(loc=0)
+    plt.tight_layout()
+    if args.save_plot:
+        plt.savefig(args.save_plot, bbox_inches='tight')
+    plt.show()
 
 
 

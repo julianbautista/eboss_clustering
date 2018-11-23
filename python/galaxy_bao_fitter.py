@@ -1,11 +1,11 @@
 from __future__ import print_function
 import camb
-import numpy as N
-import pylab as P
+import numpy as np
+import pylab as plt
 import fftlog
 import iminuit
 import iminuit.frontends
-import  scipy.interpolate 
+import scipy.interpolate 
 from scipy.ndimage import gaussian_filter1d
 
 class Cosmo:
@@ -77,6 +77,7 @@ class Cosmo:
         self.name=name
         self.norm_pk=norm_pk
         self.camb_pars = pars
+        self.results = results
         self.k = kh
         self.pk = pk[0]
         self.sigma8 = sigma8[0]
@@ -94,15 +95,15 @@ class Cosmo:
             pk = self.pk
 
         #-- transform to log space for Hankel Transform
-        klog = 10**N.linspace( N.log10(k.min()), N.log10(k.max()), k.size)
-        pklog = N.interp(klog, k, pk)
+        klog = 10**np.linspace( np.log10(k.min()), np.log10(k.max()), k.size)
+        pklog = np.interp(klog, k, pk)
 
         #-- apply isotropic damping
-        pklog *= N.exp(-0.5*klog**2*Sigma_nl**2)
+        pklog *= np.exp(-0.5*klog**2*Sigma_nl**2)
 
         rout, xiout = fftlog.HankelTransform(klog, pklog, q=1.5, mu=0.5, \
                                              output_r_power=-3, output_r=r, r0=r0)
-        norm = 1/(2*N.pi)**1.5
+        norm = 1/(2*np.pi)**1.5
         if inverse:
             xiout /= norm
         else:
@@ -128,11 +129,11 @@ class Cosmo:
         x_fit = r[w]
         y_fit = xi[w]*r[w]**3
 
-        coeff = N.polyfit(x_fit, y_fit, poly_order)
+        coeff = np.polyfit(x_fit, y_fit, poly_order)
         
         xi_sideband = xi*1.
         w_peak = (r>peak_range[0])&(r<peak_range[1])
-        xi_sideband[w_peak] = N.polyval(coeff, r[w_peak])/r[w_peak]**3
+        xi_sideband[w_peak] = np.polyval(coeff, r[w_peak])/r[w_peak]**3
 
         self.xi_sideband = xi_sideband
         self.peak_range = peak_range
@@ -153,22 +154,22 @@ class Cosmo:
         xi = self.xi
         xis = self.xi_sideband
 
-        P.figure(figsize=(6,4))
-        P.plot(k, pk*k, 'k', lw=2)
-        P.plot(k, pks*k, 'r--', lw=2)
-        P.xscale('log')
-        P.xlabel(r'$k \ [h \ \rm{Mpc}^{-1}]$')
-        P.ylabel(r'$kP_{\rm lin}(k) \ [h^{-2}\mathrm{Mpc}^2]$')
-        P.xlim(1e-3, 10)
-        P.tight_layout()
+        plt.figure(figsize=(6,4))
+        plt.plot(k, pk*k, 'k', lw=2)
+        plt.plot(k, pks*k, 'r--', lw=2)
+        plt.xscale('log')
+        plt.xlabel(r'$k \ [h \ \rm{Mpc}^{-1}]$')
+        plt.ylabel(r'$kP_{\rm lin}(k) \ [h^{-2}\mathrm{Mpc}^2]$')
+        plt.xlim(1e-3, 10)
+        plt.tight_layout()
 
-        P.figure(figsize=(6,4))
-        P.plot(r, xi*r**2, 'k', lw=2)
-        P.plot(r, xis*r**2, 'r--', lw=2)
-        P.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
-        P.ylabel(r'$r^2 \xi_{\rm lin} \ [h^{-2} \mathrm{Mpc}^{2}]$')
-        P.xlim(0, 200)
-        P.tight_layout()
+        plt.figure(figsize=(6,4))
+        plt.plot(r, xi*r**2, 'k', lw=2)
+        plt.plot(r, xis*r**2, 'r--', lw=2)
+        plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
+        plt.ylabel(r'$r^2 \xi_{\rm lin} \ [h^{-2} \mathrm{Mpc}^{2}]$')
+        plt.xlim(0, 200)
+        plt.tight_layout()
 
     def smooth(self, xi_peak, dr=1., Sigma_nl=4.):
         ''' Gaussian smoothing
@@ -183,10 +184,10 @@ class Cosmo:
             with linear redshift-space distortions
             following Hamilton 1992
         '''
-        xibar   = N.array([ N.sum(xi[:i]*r[:i]**2) for i in range(r.size)])\
-                * 3./r**3 * N.gradient(r)
-        #xibbar = N.array([ N.sum(xi[:i]*r[:i]**4) for i in range(r.size)])\
-                #* 5./r**5 * N.gradient(r)
+        xibar   = np.array([ np.sum(xi[:i]*r[:i]**2) for i in range(r.size)])\
+                * 3./r**3 * np.gradient(r)
+        #xibbar = np.array([ np.sum(xi[:i]*r[:i]**4) for i in range(r.size)])\
+                #* 5./r**5 * np.gradient(r)
         xi0 = (1+2./3*f+1./5*f**2)*xi
         xi2 = (4./3*f + 4./7*f**2)*(xi-xibar)
         #xi4 = 8./35*f**2*(xi + 2.5*xibar - 3.5*xibarbar)
@@ -194,9 +195,9 @@ class Cosmo:
 
     def set_2d_arrays(self):
 
-        self.mu = N.linspace(0, 1., 201)
-        self.mu2d = N.tile(self.mu[:, None], (1, self.k.size))
-        self.k2d = N.tile(self.k, (self.mu.size, 1))
+        self.mu = np.linspace(0, 1., 201)
+        self.mu2d = np.tile(self.mu[:, None], (1, self.k.size))
+        self.k2d = np.tile(self.k, (self.mu.size, 1))
 
     def get_2d_power_spectrum(self, pars, ell_max=2, no_peak=0):
 
@@ -213,54 +214,76 @@ class Cosmo:
             ap = pars['ap']
             Sigma_par = pars['Sigma_par']
             Sigma_per = pars['Sigma_per']
-        bias = pars['bias']
-        beta = pars['f']/pars['bias']
         
-        Sigma_stream = pars['Sigma_s']
-        Sigma_rec = pars['Sigma_rec']
 
         k = self.k
         mu = self.mu
         mu2d = self.mu2d 
         k2d = self.k2d 
-    
+   
+        #-- scale k and mu by alphas 
         if 'aiso' in pars:
             ak2d = k2d/at
             amu = mu*1.
         else:
             #-- this is the correct formula (Beutler et al. 2013)
             F = ap/at
-            ak2d = k2d/at * N.sqrt( 1 + mu2d**2 * (1/F**2 - 1) )
-            amu   = mu/F  * N.sqrt( 1 + mu**2   * (1/F**2 - 1) )**(-1) 
-        amu2d = N.tile( amu[:, None], (1, k.size)) 
+            ak2d = k2d/at * np.sqrt( 1 + mu2d**2 * (1/F**2 - 1) )
+            amu   = mu/F  * np.sqrt( 1 + mu**2   * (1/F**2 - 1) )**(-1) 
+        amu2d = np.broadcast_to( amu, (k.size, amu.size)).T 
 
-        #-- anisotropic damping
-        sigma_v2 = (1-amu**2)*Sigma_per**2/2+ amu**2*Sigma_par**2/2 
+
+        bias = pars['bias']
+        #f = pars['f']
+        beta = pars['beta']
+        Sigma_rec = pars['Sigma_rec']
+
+        #-- dealing with cross-correlation
+        if 'bias2' in pars:
+            bias2 = pars['bias2']
+            #f2 = pars['f2']
+            beta2 = pars['beta2']
+        else:
+            bias2 = bias*1.
+            #f2 = f*1.
+            beta2 = beta*1.
 
         #-- linear Kaiser redshift space distortions with reconstruction damping
         if Sigma_rec == 0:
-            Kaiser = (1+beta*amu2d**2 )**2
+            #Kaiser = (bias+f*amu2d**2)*(bias2+f2*amu2d**2)
+            Kaiser = bias*bias2*(1+beta*amu2d**2)*(1+beta2*amu2d**2)
         else:
-            Kaiser = (1+beta*(1.-N.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2 )**2 
+            #Kaiser = (bias +f *(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2) * \
+            #         (bias2+f2*(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2)
+            Kaiser = bias*bias2*(1 +beta *(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2) * \
+                                (1 +beta2*(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2)
 
         #-- Fingers of God
+        Sigma_stream = pars['Sigma_s']
         Dnl = 1./( 1 + ak2d**2*amu2d**2*Sigma_stream**2)
 
-        apk2d_s = N.interp(ak2d, self.k, self.pk_sideband)*bias**2
+        #-- Sideband model (no BAO peak)
+        apk2d_s = np.interp(ak2d, self.k, self.pk_sideband)
 
         if no_peak:
             pk2d_out = apk2d_s
         else:
-            apk2d = N.interp(ak2d, self.k, self.pk)*bias**2 
-            pk2d_out = ( (apk2d - apk2d_s)*N.exp(-ak2d**2*sigma_v2[:, None]) + apk2d_s)
+            #-- Anisotropic damping applied to BAO peak only
+            sigma_v2 = (1-amu**2)*Sigma_per**2/2+ amu**2*Sigma_par**2/2 
+            apk2d = np.interp(ak2d, self.k, self.pk)
+            pk2d_out = ( (apk2d - apk2d_s)*np.exp(-ak2d**2*sigma_v2[:, None]) + apk2d_s)
 
-        pk2d_out *= Dnl**2 * Kaiser #[:, None]
+        if 'beam' in pars:
+            pk2d_out *= np.exp( -ak2d**2*pars['beam']**2*(1-amu2d**2)/2) 
+        
+        pk2d_out *= Kaiser
+        pk2d_out *= Dnl**2 
         pk2d_out /= (at**2*ap)
 
-        pk_mult = N.zeros((ell_max//2+1, k.size))
-        dmu = N.gradient(mu)
+        pk_mult = np.zeros((ell_max//2+1, k.size))
+        dmu = np.gradient(mu)
         for ell in range(0, ell_max+2, 2):
-            pk_mult[ell//2] = (2.*ell+1.) * N.sum( pk2d_out * \
+            pk_mult[ell//2] = (2.*ell+1.) * np.sum( pk2d_out * \
                              self.Legendre(ell, mu)[:, None] * dmu[:, None], axis=0)  
 
         self.pars = pars.copy()
@@ -271,7 +294,7 @@ class Cosmo:
     def Legendre(self, ell, mu):
 
         if ell == 0:
-            return N.ones(mu.shape)
+            return np.ones(mu.shape)
         elif ell == 2:
             return 0.5*(3*mu**2-1)
         elif ell == 4:
@@ -287,7 +310,7 @@ class Cosmo:
         for ell in range(0, ell_max, 2):
             rout, xiout = fftlog.HankelTransform(k, pk_mult[ell//2], q=1.5, mu=0.5+ell, \
                                                  output_r_power=-3, output_r=r, r0=r0)
-            norm = 1/(2*N.pi)**1.5 * (-1)**(ell/2)
+            norm = 1/(2*np.pi)**1.5 * (-1)**(ell/2)
             xi_mult[ell//2] = xiout*norm 
 
         return rout, xi_mult
@@ -299,98 +322,120 @@ class Cosmo:
         r, cf_multipoles = self.get_multipoles_from_pk(self.k, pk_multipoles)
        
         nmult = cf_multipoles.shape[0]
-        cf_out = N.zeros((nmult, rout.size))
+        cf_out = np.zeros((nmult, rout.size))
         for i in range(nmult):
-            cf_out[i] = N.interp(rout, r, cf_multipoles[i])
+            cf_out[i] = np.interp(rout, r, cf_multipoles[i])
         return cf_out
 
     @staticmethod
-    def test():
+    def test(z=0, pars_to_test=['aiso', 'epsilon', 'Sigma_rec', 'Sigma_s', 'Sigma_NL'],
+             pars0 = {'ap':1.0, 'at': 1.0, 'bias':1.0, 'f':0.6, \
+                'Sigma_par':10., 'Sigma_per':6., 'Sigma_s':4., 'Sigma_rec':0.},
+             r = np.linspace(40, 180, 100)):
 
-        cosmo = Cosmo()
-        r = N.linspace(40, 180, 100)
-        pars0 = {'ap':1.0, 'at': 1.0, 'bias':1.0, 'f':0.6, \
-                'Sigma_par':10., 'Sigma_per':6., 'Sigma_s':4., 'Sigma_rec':0.}
+        cosmo = Cosmo(z=z, name='planck')
         lss = ['-', '--', ':']
+        if 'aiso' in pars_to_test:
+            plt.figure(figsize=(6, 5))
+            pars = pars0.copy()
+            for i, ap in enumerate([0.95, 1.0, 1.05]):
+                pars['at'] = ap
+                pars['ap'] = ap
+                aiso = ap
+                xi_mult = cosmo.get_multipoles_2d(r, pars)
+                for j in range(2):
+                    plt.subplot(2, 1, j+1)
+                    plt.plot(r, xi_mult[j]*r**2, ls=lss[i], color='k', lw=2, \
+                           label=r'$\alpha_{\rm iso} = %.2f$'%aiso)
+                    if i==0:
+                        plt.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
+            plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
+            plt.legend(loc=0, fontsize=10)
+            plt.tight_layout()
 
-        P.figure(figsize=(6, 5))
-        pars = pars0.copy()
-        for i, ap in enumerate([0.95, 1.0, 1.05]):
-            pars['at'] = ap
-            pars['ap'] = ap
-            aiso = ap
-            xi_mult = cosmo.get_multipoles_2d(r, pars)
-            for j in range(2):
-                P.subplot(2, 1, j+1)
-                P.plot(r, xi_mult[j]*r**2, ls=lss[i], color='k', lw=2, \
-                       label=r'$\alpha_{\rm iso} = %.2f$'%aiso)
-                if i==0:
-                    P.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
-        P.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
-        P.legend(loc=0, fontsize=10)
-        
-        P.figure(figsize=(6, 5))
-        pars = pars0.copy()
-        for i, ap in enumerate([0.98, 1.0, 1.02]):
-            pars['at'] = 1./N.sqrt(ap)
-            pars['ap'] = ap
-            epsilon = (ap*N.sqrt(ap))**(1./3)-1
-            xi_mult = cosmo.get_multipoles_2d(r, pars)
-            for j in range(2):
-                P.subplot(2, 1, j+1)
-                P.plot(r, xi_mult[j]*r**2, ls=lss[i], color='k', lw=2, \
-                       label=r'$\epsilon = %.2f$'%epsilon)
-                if i==0:
-                    P.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
-        P.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
-        P.legend(loc=0, fontsize=10)
+        if 'epsilon' in pars_to_test: 
+            plt.figure(figsize=(6, 5))
+            pars = pars0.copy()
+            for i, ap in enumerate([0.98, 1.0, 1.02]):
+                pars['at'] = 1./np.sqrt(ap)
+                pars['ap'] = ap
+                epsilon = (ap*np.sqrt(ap))**(1./3)-1
+                xi_mult = cosmo.get_multipoles_2d(r, pars)
+                for j in range(2):
+                    plt.subplot(2, 1, j+1)
+                    plt.plot(r, xi_mult[j]*r**2, ls=lss[i], color='k', lw=2, \
+                           label=r'$\epsilon = %.2f$'%epsilon)
+                    if i==0:
+                        plt.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
+            plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
+            plt.legend(loc=0, fontsize=10)
 
-
-        P.figure(figsize=(6, 5))
-        pars = pars0.copy()
-        for i, sigma_rec in enumerate([0., 5.0, 10.]):
-            pars['Sigma_rec'] = sigma_rec
-            xi_mult = cosmo.get_multipoles_2d(r, pars)
-            for j in range(2):
-                P.subplot(2, 1, j+1)
-                P.plot(r, xi_mult[j]*r**2, ls=lss[i], color='k', lw=2, \
-                       label=r'$\Sigma_r = %.1f$'%sigma_rec)
-                if i==0:
-                    P.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
-        P.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
-        P.legend(loc=0, fontsize=10)
-        
-
+        if 'Sigma_rec' in pars_to_test:
+            plt.figure(figsize=(6, 5))
+            pars = pars0.copy()
+            for i, sigma_rec in enumerate([0., 5.0, 10.]):
+                pars['Sigma_rec'] = sigma_rec
+                xi_mult = cosmo.get_multipoles_2d(r, pars)
+                for j in range(2):
+                    plt.subplot(2, 1, j+1)
+                    plt.plot(r, xi_mult[j]*r**2, ls=lss[i], color='k', lw=2, \
+                           label=r'$\Sigma_r = %.1f$'%sigma_rec)
+                    if i==0:
+                        plt.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
+            plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
+            plt.legend(loc=0, fontsize=10)
             
-        P.figure(figsize=(6, 5))
-        pars = pars0.copy()
-        for i, s in enumerate([0., 4., 8.]):
-            pars['Sigma_s'] = s
-            xi_mult = cosmo.get_multipoles_2d(r, pars)
-            for j in range(2):
-                P.subplot(2, 1, j+1)
-                P.plot(r, xi_mult[j]*r**2, ls=lss[i], color='k', lw=2, \
-                        label=r'$\Sigma_s = %.1f$'%s)
-                if i==0:
-                    P.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
-        P.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
-        P.legend(loc=0, fontsize=10)
+
+        if 'Sigma_s' in pars_to_test: 
+            plt.figure(figsize=(6, 5))
+            pars = pars0.copy()
+            for i, s in enumerate([0., 4., 8.]):
+                pars['Sigma_s'] = s
+                xi_mult = cosmo.get_multipoles_2d(r, pars)
+                for j in range(2):
+                    plt.subplot(2, 1, j+1)
+                    plt.plot(r, xi_mult[j]*r**2, ls=lss[i], color='k', lw=2, \
+                            label=r'$\Sigma_s = %.1f$'%s)
+                    if i==0:
+                        plt.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
+            plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
+            plt.legend(loc=0, fontsize=10)
+        
+        if 'Sigma_NL' in pars_to_test:        
+            plt.figure(figsize=(6, 5))
+            pars = pars0.copy()
+            for i, sig in enumerate([[6, 10], [8, 8], [0., 0]]):
+                pars['Sigma_per'] = sig[0]
+                pars['Sigma_par'] = sig[1]
+                xi_mult = cosmo.get_multipoles_2d(r, pars)
+                for j in range(2):
+                    plt.subplot(2, 1, j+1)
+                    plt.plot(r, xi_mult[j]*r**2, ls=lss[i], color='k', lw=2, \
+                            label=r'$\Sigma_\perp = %.0f,\Sigma_\parallel = %.0f$'%\
+                            (sig[0], sig[1]))
+                    if i==0:
+                        plt.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
+            plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
+            plt.legend(loc=0, fontsize=10)
+
+        if 'beam' in pars_to_test:
+            plt.figure(figsize=(6, 5))
+            pars = pars0.copy()
+            #r = np.linspace(1, 20, 100)
+            for i, beam in enumerate([4.61, 6.34, 14.4]):
+                pars['beam'] = beam
+                xi_mult = cosmo.get_multipoles_2d(r, pars)
+                for j in range(2):
+                    plt.subplot(2, 1, j+1)
+                    plt.plot(r, xi_mult[j], ls=lss[i], color='k', lw=2, \
+                            label=r'$R_{\rm beam} = %.2f Mpc/h$'%beam)
+                    if i==0:
+                        plt.ylabel(r'$\xi_{%d}$'%(j*2))
+            plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
+            plt.legend(loc=0, fontsize=10)
+            plt.tight_layout()
+        
             
-        P.figure(figsize=(6, 5))
-        pars = pars0.copy()
-        for i, sig in enumerate([[6, 10], [8, 8], [0., 0]]):
-            pars['Sigma_per'] = sig[0]
-            pars['Sigma_par'] = sig[1]
-            xi_mult = cosmo.get_multipoles_2d(r, pars)
-            for j in range(2):
-                P.subplot(2, 1, j+1)
-                P.plot(r, xi_mult[j]*r**2, ls=lss[i], color='k', lw=2, \
-                        label=r'$\Sigma_\perp = %.0f,\Sigma_\parallel = %.0f$'%\
-                        (sig[0], sig[1]))
-                if i==0:
-                    P.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
-        P.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
-        P.legend(loc=0, fontsize=10)
 
     def get_dist_rdrag(self):
         
@@ -419,8 +464,8 @@ class Data:
                     nmocks=None):
 
         if quad is not None:
-            r = N.append(r, r)
-            cf = N.append(mono, quad)
+            r = np.append(r, r)
+            cf = np.append(mono, quad)
             if cf.size != coss.shape[0]:
                 print('Problem: covariance shape is not compatible '+
                       'with mono-quad', \
@@ -443,22 +488,23 @@ class Data:
         self.r = r
         self.cf = cf
         self.coss = coss
-        self.icoss = N.linalg.inv(coss)
+        self.icoss = np.linalg.inv(coss)
         if nmocks:
             correction = (1 - (cf.size + 1.)/(nmocks-1))
             self.icoss *= correction
 
 class Model:
 
-    def __init__(self, fit_broadband=1, bb_min=-2, bb_max=0, name='challenge',
-                 norm_pk=0, non_linear=0, z=0,
-                 fit_iso=0, fit_multipoles=0, no_peak=0):
+    def __init__(self, name='challenge', z = 0, 
+                 fit_broadband=True, bb_min=-2, bb_max=0, 
+                 norm_pk=False, non_linear=False,
+                 fit_iso=False, fit_multipoles=False, 
+                 no_peak=False, fit_cross=False, fit_beam=False):
 
         cosmo = Cosmo(z=z, name=name, norm_pk=norm_pk, non_linear=non_linear)
 
         #-- define parameter dictionary
         pars = {}
-
         
         if fit_iso:
             pars_names = ['aiso']
@@ -472,16 +518,27 @@ class Model:
             pars_names += ['Sigma_per', 'Sigma_par']
             pars['Sigma_per'] = 6.
             pars['Sigma_par'] = 10.
-        #pars_names += ['bias', 'beta', 'Sigma_per', 'Sigma_par', 'Sigma_s', 'Sigma_rec']
-        pars_names += ['bias', 'f', 'Sigma_s', 'Sigma_rec']
-        pars['bias'] = 1.0
-        #pars['beta'] = 0.4
-        pars['f'] = 0.82
+        
+        #pars_names += ['bias', 'f', 'Sigma_s', 'Sigma_rec']
+        pars_names += ['bias', 'beta', 'Sigma_s', 'Sigma_rec']
+        pars['bias'] = 3.0
+        #pars['f'] = 0.3
+        pars['beta'] = 0.3
         pars['Sigma_s'] = 4.
         pars['Sigma_rec'] = 1000.
-            
+        if fit_cross:
+            #pars_names += ['bias2', 'f2']        
+            pars_names += ['bias2', 'beta2']        
+            pars['bias2'] = 1.
+            #pars['f2'] = 0.5
+            pars['beta2'] = 0.5
+
+        if fit_beam:
+            pars_names += ['beam']
+            pars['beam'] = 4.
+
         if fit_broadband:
-            for i, bb_power in enumerate(N.arange(bb_min, bb_max+1)):
+            for i, bb_power in enumerate(np.arange(bb_min, bb_max+1)):
                 if fit_multipoles:
                     pars_names.append('bb_%d_mono'%i)
                     pars['bb_%d_mono'%i] = 0.
@@ -498,6 +555,8 @@ class Model:
         self.fit_broadband = fit_broadband
         self.fit_multipoles = fit_multipoles
         self.no_peak = no_peak
+        self.fit_cross = fit_cross
+        self.fit_beam = fit_beam
         self.cosmo = cosmo
         
     def value(self, rout, pars):
@@ -516,7 +575,7 @@ class Model:
                 power = self.bb_min + i
                 monobb += pars['bb_%d_mono'%i]*(rout**power)
                 quadbb += pars['bb_%d_quad'%i]*(rout**power)
-            return N.append(monobb, quadbb)
+            return np.append(monobb, quadbb)
         else:
             bb = rout*0.
             for i in range(self.bb_max-self.bb_min+1):
@@ -606,7 +665,7 @@ class Chi2:
         residual = self.data.cf - model
         inv_cov = self.data.icoss
 
-        chi2 = N.dot(residual, N.dot(inv_cov, residual))
+        chi2 = np.dot(residual, np.dot(inv_cov, residual))
 
         if self.priors:
             for key in self.priors.keys():
@@ -668,7 +727,7 @@ class Chi2:
         model = self.model
         r = data.r
         cf = data.cf
-        dcf = N.sqrt(N.diag(data.coss))
+        dcf = np.sqrt(np.diag(data.coss))
         cf_model = self.get_model(r, self.best_pars)
 
         if model.fit_multipoles:
@@ -678,25 +737,25 @@ class Chi2:
             quad = cf[r.size:]
             dquad = dcf[r.size:]
             quad_model = cf_model[r.size:]
-            P.subplot(211)
+            plt.subplot(211)
             if not model_only:
-                P.errorbar(r, mono*r**scale_r, dmono*r**scale_r, fmt='o')
-            P.plot(r, mono_model*r**scale_r, label=label)
-            P.ylabel(r'$r^{%d} \xi_0$ [$h^{%d}$ Mpc$^{%d}]$'%\
+                plt.errorbar(r, mono*r**scale_r, dmono*r**scale_r, fmt='o')
+            plt.plot(r, mono_model*r**scale_r, label=label)
+            plt.ylabel(r'$r^{%d} \xi_0$ [$h^{%d}$ Mpc$^{%d}]$'%\
                      (scale_r, -scale_r, scale_r))
-            P.subplot(212)
+            plt.subplot(212)
             if not model_only:
-                P.errorbar(r, quad*r**scale_r, dquad*r**scale_r, fmt='o')
-            P.plot(r, quad_model*r**scale_r)
-            P.ylabel(r'$r^{%d} \xi_2$ [$h^{%d}$ Mpc$^{%d}]$'%\
+                plt.errorbar(r, quad*r**scale_r, dquad*r**scale_r, fmt='o')
+            plt.plot(r, quad_model*r**scale_r)
+            plt.ylabel(r'$r^{%d} \xi_2$ [$h^{%d}$ Mpc$^{%d}]$'%\
                     (scale_r, -scale_r, scale_r))
         else: 
             if not model_only:
-                P.errorbar(r, cf*r**scale_r, dcf*r**scale_r, fmt='o')
-            P.plot(r, cf_model*r**scale_r, label=label)
-            P.ylabel(r'$r^{%d} \xi_0$ [$h^{%d}$ Mpc$^{%d}]$'%\
+                plt.errorbar(r, cf*r**scale_r, dcf*r**scale_r, fmt='o')
+            plt.plot(r, cf_model*r**scale_r, label=label)
+            plt.ylabel(r'$r^{%d} \xi_0$ [$h^{%d}$ Mpc$^{%d}]$'%\
                      (scale_r, -scale_r, scale_r))
-        P.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
+        plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
 
     def scan(self, par_name='alpha', par_min=0.8, par_max=1.2, par_nsteps=400):
 
@@ -708,8 +767,8 @@ class Chi2:
             init_pars['error_'+name] = abs(value)/10. if value!=0 else 0.1
 
         init_pars['fix_'+par_name] = True
-        par_grid = N.linspace(par_min, par_max, par_nsteps)
-        chi2_grid = N.zeros(par_nsteps)
+        par_grid = np.linspace(par_min, par_max, par_nsteps)
+        chi2_grid = np.zeros(par_nsteps)
        
         if self.fixes:
             for key in self.fixes:
@@ -744,11 +803,11 @@ class Chi2:
     
 
         init_pars['fix_'+par_names[0]] = True
-        par_grid0 = N.linspace(par_min[0], par_max[0], par_nsteps[0])
+        par_grid0 = np.linspace(par_min[0], par_max[0], par_nsteps[0])
         init_pars['fix_'+par_names[1]] = True
-        par_grid1 = N.linspace(par_min[1], par_max[1], par_nsteps[1])
+        par_grid1 = np.linspace(par_min[1], par_max[1], par_nsteps[1])
 
-        chi2_grid = N.zeros(par_nsteps)
+        chi2_grid = np.zeros(par_nsteps)
        
         if self.fixes:
             for key in self.fixes:
@@ -777,10 +836,10 @@ class Chi2:
 
         sfin = fin.split('.')
         par_name = sfin[-2]
-        x, chi2 = N.loadtxt(fin, unpack=1)
+        x, chi2 = np.loadtxt(fin, unpack=1)
         bestx = x[0]
         chi2min = chi2[0]
-        x = N.unique(x[1:])
+        x = np.unique(x[1:])
         chi2scan = chi2[1:]
         self.chi2scan = chi2scan
         self.x=x
@@ -791,7 +850,7 @@ class Chi2:
     def plot_scan1d(self, ls=None, \
                     color=None,  alpha=None, label=None):
 
-        P.plot(self.x, self.chi2scan-self.chi2min, ls=ls, \
+        plt.plot(self.x, self.chi2scan-self.chi2min, ls=ls, \
                 color=color, alpha=alpha, label=label)
 
     def read_scan2d(self, fin):
@@ -800,14 +859,14 @@ class Chi2:
         par_name0 = sfin[-3]
         par_name1 = sfin[-2]
 
-        x, y, chi2 = N.loadtxt(fin, unpack=1)
+        x, y, chi2 = np.loadtxt(fin, unpack=1)
         bestx = x[0]
         besty = y[0]
         chi2min = chi2[0]
 
-        x = N.unique(x[1:])
-        y = N.unique(y[1:])
-        chi2scan2d = N.reshape(chi2[1:], (x.size, y.size)).transpose()
+        x = np.unique(x[1:])
+        y = np.unique(y[1:])
+        chi2scan2d = np.reshape(chi2[1:], (x.size, y.size)).transpose()
         
         self.chi2scan2d = chi2scan2d
         self.x=x
@@ -833,7 +892,7 @@ class Chi2:
             else:
                 x = self.x*1.
                 y = self.y*1.
-            P.contour(x, y, self.chi2scan2d-self.chi2min, \
+            plt.contour(x, y, self.chi2scan2d-self.chi2min, \
                       levels=[levels[i]], \
                       linestyles=[ls[i]], colors=color, alpha=alpha,\
                       label=label)
@@ -855,7 +914,7 @@ class Chi2:
                 (self.chi2min, self.ndata, self.npars, self.rchi2min))
         fout.write('param \t value \t error\n')
        
-        pars_names = N.sort([p for p in self.best_pars])
+        pars_names = np.sort([p for p in self.best_pars])
         for p in pars_names:
             print(p, self.best_pars[p], self.errors[p], file=fout)
         fout.close()
