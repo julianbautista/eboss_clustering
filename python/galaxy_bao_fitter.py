@@ -255,8 +255,9 @@ class Cosmo:
         else:
             #Kaiser = (bias +f *(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2) * \
             #         (bias2+f2*(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2)
-            Kaiser = bias*bias2*(1 +beta *(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2) * \
-                                (1 +beta2*(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2)
+            Kaiser = bias*bias2*\
+                     (1+beta *(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2) * \
+                     (1+beta2*(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2)
 
         #-- Fingers of God
         Sigma_stream = pars['Sigma_s']

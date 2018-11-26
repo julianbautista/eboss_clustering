@@ -440,10 +440,9 @@ class Multipoles:
         mu2d = self.mu2d
         cf = self.cf
         dcf = self.dcf 
-
-        self.mono = N.sum(cf*(dcf>0), axis=1)/N.sum(dcf>0., axis=1)
-        self.quad = N.sum(cf*0.5*(3*mu2d**2-1)*(dcf>0), axis=1)/\
-                    N.sum(dcf>0., axis=1)*5.
+        dmu = N.gradient(self.mu)[0]
+        self.mono = N.sum(cf*(dcf>0)*dmu, axis=1)
+        self.quad = N.sum(cf*0.5*(3*mu2d**2-1)*(dcf>0)*dmu, axis=1)*5.
 
     def fit_multipoles(self, mu_min=0., mu_max=1.0):
 
@@ -463,10 +462,8 @@ class Multipoles:
             self.mono[i] = par['x'][0]
             self.quad[i] = par['x'][1]
 
-
-
     def plot(self, label=None, quad=0, errors=0, scale_r=2, \
-             alpha=1.0, color=None):
+             alpha=1.0, color=None, lw=None):
 
         r = self.r
         y1 = self.mono  * (1 + r**scale_r) 
@@ -482,7 +479,7 @@ class Multipoles:
             P.errorbar(r, y1, dy1, fmt='o', label=label, \
                        color=color, alpha=alpha)
         else:
-            P.plot(r, y1, label=label, color=color, alpha=alpha)
+            P.plot(r, y1, label=label, color=color, alpha=alpha, lw=lw)
         if scale_r == 0:
             P.ylabel(r'$\xi_0$')
         else:
@@ -495,7 +492,7 @@ class Multipoles:
             if errors:
                 P.errorbar(r, y2, dy2, fmt='o', color=color, alpha=alpha)
             else:
-                P.plot(r, y2, color=color, alpha=alpha)
+                P.plot(r, y2, color=color, alpha=alpha, lw=lw)
             if scale_r == 0:
                 P.ylabel(r'$\xi_2$')
             else:
@@ -503,6 +500,7 @@ class Multipoles:
                          (scale_r, -scale_r, scale_r))
             P.axhline(0, color='k', ls=':')
         P.xlabel(r'$r$ [$h^{-1}$ Mpc]')
+        P.tight_layout()
 
     def plot_many(self, label=None, quad=0, errors=1, \
                   scale_r=2, alpha=1.0, color=None):
