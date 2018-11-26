@@ -87,8 +87,9 @@ class Cosmo:
 
         return kh, pk[0]
         
-    def get_correlation_function(self, k=None, pk=None,  \
-                                Sigma_nl=0., r=None, r0=1., inverse=0, update=0):
+    def get_correlation_function(self, k=None, pk=None,  
+                                 Sigma_nl=0., r=None, 
+                                 r0=1., inverse=0, update=0):
 
         if k is None or pk is None:
             k = self.k
@@ -101,8 +102,10 @@ class Cosmo:
         #-- apply isotropic damping
         pklog *= np.exp(-0.5*klog**2*Sigma_nl**2)
 
-        rout, xiout = fftlog.HankelTransform(klog, pklog, q=1.5, mu=0.5, \
-                                             output_r_power=-3, output_r=r, r0=r0)
+        rout, xiout = fftlog.HankelTransform(klog, pklog, 
+                                             q=1.5, mu=0.5, 
+                                             output_r_power=-3, 
+                                             output_r=r, r0=r0)
         norm = 1/(2*np.pi)**1.5
         if inverse:
             xiout /= norm
@@ -329,12 +332,16 @@ class Cosmo:
         return cf_out
 
     @staticmethod
-    def test(z=0, pars_to_test=['aiso', 'epsilon', 'Sigma_rec', 'Sigma_s', 'Sigma_NL'],
-             pars0 = {'ap':1.0, 'at': 1.0, 'bias':1.0, 'f':0.6, \
+    def test(z=0, 
+             pars_to_test=['aiso', 'epsilon', 
+                           'Sigma_rec', 'Sigma_s', 'Sigma_NL'],
+             pars0 = {'ap':1.0, 'at': 1.0, 'bias':1.0, 'beta':0.6, \
                 'Sigma_par':10., 'Sigma_per':6., 'Sigma_s':4., 'Sigma_rec':0.},
-             r = np.linspace(40, 180, 100)):
+             rmin=1., rmax=200., scale_r=2):
 
+        r = np.linspace(rmin, rmax, 200)
         cosmo = Cosmo(z=z, name='planck')
+
         lss = ['-', '--', ':']
         if 'aiso' in pars_to_test:
             plt.figure(figsize=(6, 5))
@@ -346,10 +353,15 @@ class Cosmo:
                 xi_mult = cosmo.get_multipoles_2d(r, pars)
                 for j in range(2):
                     plt.subplot(2, 1, j+1)
-                    plt.plot(r, xi_mult[j]*r**2, ls=lss[i], color='k', lw=2, \
-                           label=r'$\alpha_{\rm iso} = %.2f$'%aiso)
+                    plt.plot(r, xi_mult[j]*r**scale_r, 
+                             ls=lss[i], color='k', lw=2, \
+                             label=r'$\alpha_{\rm iso} = %.2f$'%aiso)
                     if i==0:
-                        plt.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
+                        if scale_r == 0:
+                            plt.ylabel(r'$\xi_{%d}$'%(j*2))
+                        else:
+                            plt.ylabel(r'$r^%d \xi_{%d} \ [h^{-%d} \mathrm{Mpc}^{%d}]$'%\
+                                       (scale_r, j*2, scale_r, scale_r))
             plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
             plt.legend(loc=0, fontsize=10)
             plt.tight_layout()
@@ -364,7 +376,7 @@ class Cosmo:
                 xi_mult = cosmo.get_multipoles_2d(r, pars)
                 for j in range(2):
                     plt.subplot(2, 1, j+1)
-                    plt.plot(r, xi_mult[j]*r**2, ls=lss[i], color='k', lw=2, \
+                    plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
                            label=r'$\epsilon = %.2f$'%epsilon)
                     if i==0:
                         plt.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
@@ -379,7 +391,7 @@ class Cosmo:
                 xi_mult = cosmo.get_multipoles_2d(r, pars)
                 for j in range(2):
                     plt.subplot(2, 1, j+1)
-                    plt.plot(r, xi_mult[j]*r**2, ls=lss[i], color='k', lw=2, \
+                    plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
                            label=r'$\Sigma_r = %.1f$'%sigma_rec)
                     if i==0:
                         plt.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
@@ -395,7 +407,7 @@ class Cosmo:
                 xi_mult = cosmo.get_multipoles_2d(r, pars)
                 for j in range(2):
                     plt.subplot(2, 1, j+1)
-                    plt.plot(r, xi_mult[j]*r**2, ls=lss[i], color='k', lw=2, \
+                    plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
                             label=r'$\Sigma_s = %.1f$'%s)
                     if i==0:
                         plt.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
@@ -411,7 +423,7 @@ class Cosmo:
                 xi_mult = cosmo.get_multipoles_2d(r, pars)
                 for j in range(2):
                     plt.subplot(2, 1, j+1)
-                    plt.plot(r, xi_mult[j]*r**2, ls=lss[i], color='k', lw=2, \
+                    plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
                             label=r'$\Sigma_\perp = %.0f,\Sigma_\parallel = %.0f$'%\
                             (sig[0], sig[1]))
                     if i==0:
@@ -428,7 +440,7 @@ class Cosmo:
                 xi_mult = cosmo.get_multipoles_2d(r, pars)
                 for j in range(2):
                     plt.subplot(2, 1, j+1)
-                    plt.plot(r, xi_mult[j], ls=lss[i], color='k', lw=2, \
+                    plt.plot(r, xi_mult[j]*r*scale_r, ls=lss[i], color='k', lw=2, \
                             label=r'$R_{\rm beam} = %.2f Mpc/h$'%beam)
                     if i==0:
                         plt.ylabel(r'$\xi_{%d}$'%(j*2))
