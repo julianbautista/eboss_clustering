@@ -27,7 +27,6 @@ class MultiLinearFit:
 
         ''' 
 
-
         print('Using the following maps:      ', maps)
         #print('Fitting for the following maps:', fit_maps)
 
@@ -84,9 +83,9 @@ class MultiLinearFit:
             a.DEPTH_I = self.flux_to_mag(a.DEPTH_I, 3, ebv=a.EBV)
             a.DEPTH_Z = self.flux_to_mag(a.DEPTH_Z, 4, ebv=a.EBV)
  
-        nsyst = len(maps)
+        nmaps = len(maps)
         npix  = a.size
-        syst = np.zeros((nsyst, npix)) 
+        syst = np.zeros((nmaps, npix)) 
         
         for i in range(len(maps)):
             try:
@@ -102,7 +101,7 @@ class MultiLinearFit:
         self.maps_names = maps
         self.maps_suffix = maps
         self.nside = hp.npix2nside(npix) 
-        self.nmaps = nsyst
+        self.nmaps = nmaps
         return True
 
     def plot_systematic_map(self, index):
@@ -214,6 +213,8 @@ class MultiLinearFit:
         self.edens = np.sqrt((h_data   /h_rand**2 + \
                               h_data**2/h_rand**3   )) * factor
         self.chi2_before = np.sum((self.dens-1.)**2/self.edens**2)
+        self.ndata = h_data.size
+        self.rchi2_before = self.chi2_before/self.ndata
 
     def get_histograms(self, pars=None):
         data_syst = self.data_syst
@@ -311,7 +312,8 @@ class MultiLinearFit:
                     fit_index.append(i)
             fit_index = np.array(fit_index)
         self.fit_index = fit_index
-        
+        self.fit_maps = fit_maps
+ 
         pars0 = np.zeros(self.fit_index.size+1)
         pars0[0] = 1.
 
@@ -352,7 +354,53 @@ class MultiLinearFit:
         if not hasattr(self, 'pars'): 
             self.fit_pars()
         return 1/self.get_model(self.pars, syst)
-        
+
+    def export(self, fout):
+
+        fout = open(fout, 'w')
+        nbins = self.centers[0].size
+       
+        print('#- Photometric systematic fit output by Julian Bautista', file=fout) 
+        print('#- Number of systematic maps read: %d'%self.nmaps, file=fout)
+        print('#- Number of systematic maps fitted: %d'%len(self.fit_maps), file=fout)
+        print('#- Number of bins per systematic: %d'%nbins, file=fout)
+        print('#- Maps read:', file=fout)
+        print('#- '+' '.join(self.maps_names), file=fout)
+        print('#- Maps fitted:', file=fout)
+        print('#- '+' '.join(self.fit_maps), file=fout)
+        print('#- chi2 ndata npars rchi2 (before fit)', file=fout)
+        print('#- %f %d %d %f'%(self.chi2_before, self.ndata, 0, self.rchi2_before), file=fout)
+        print('#- chi2 ndata npars rchi2 (after fit)', file=fout)
+        print('#- %f %d %d %f'%(self.chi2_after, self.ndata, self.npars, self.rchi2_after), file=fout)
+
+        self.get_histograms()
+        dens_before = self.dens*1
+        edens_before = self.edens*1
+        self.get_histograms(pars=self.pars)
+        dens_after = self.dens
+        edens_after = self.edens
+
+        for j in range(self.nmaps):
+            sname = self.maps_names[j]
+            line = '#- %s_min  %s_cen  %s_max'%\
+                   (sname, sname, sname)
+            line += '  delta_before  edelta_before  delta_after  edelta_after \t'
+            print(line, file=fout)
+
+            for i in range(nbins):
+                smin = self.edges[j, i]
+                smax = self.edges[j, i+1]
+                scen = self.centers[j, i]
+                den0 =   dens_before[j, i]
+                eden0 = edens_before[j, i]
+                den1 =   dens_after[j, i]
+                eden1 = edens_after[j, i]
+                line = '%f \t %f \t %f \t %f \t %f \t %f \t %f'%\
+                       (smin, scen, smax, den0, eden0, den1, eden1)
+                print(line, file=fout)
+
+        fout.close()
+
 
 if len(sys.argv)<2:
     sys.exit()
@@ -393,8 +441,12 @@ parser.add_argument('--random_fraction', type=float, default=1.,
     help='Fraction of randoms to be used. Default = 1 (use all of them)')
 parser.add_argument('--nest', action='store_true', default=False, 
     help='Include this option if systematic maps in input_fits are in NESTED scheme')
+parser.add_argument('--export', type=str, 
+    help='Export density vs systematic values into text file')
 args = parser.parse_args()
 
+
+#-- Read data and randoms
 print('Reading galaxies from ',args.data)
 dat = Table.read(args.data)
 if args.randoms is not None:
@@ -405,6 +457,7 @@ print('Reading randoms  from ', ran_file)
 ran = Table.read(ran_file)
 
 
+#-- Cut the sample 
 print('Cutting galaxies and randoms between zmin=%.3f and zmax=%.3f'%\
       (args.zmin, args.zmax))
 wd = (dat['Z']>=args.zmin)&\
@@ -423,7 +476,6 @@ rand_ra, rand_dec = ran['RA'][wr], ran['DEC'][wr]
 data_we = (dat['WEIGHT_CP']*dat['WEIGHT_FKP']/dat['sector_SSR'])[wd]
 rand_we = (ran['COMP_BOSS'])[wr]#*ran['WEIGHT_FKP'])[wr]
 
-#-- This is where the magic happens.
 m = MultiLinearFit(
         data_ra=data_ra, data_dec=data_dec, data_we=data_we,
         rand_ra=rand_ra, rand_dec=rand_dec, rand_we=rand_we,
@@ -431,13 +483,16 @@ m = MultiLinearFit(
         nbins_per_syst = args.nbins_per_syst,
         infits = args.input_fits,
         nest=args.nest)
+
+#-- Perform the fit
 m.fit_pars(fit_maps=args.fit_maps)
 
 
 print('Assigning weights to galaxies and randoms')
-dat['WEIGHT_SYSTOT_JB'] = m.get_weights(dat['RA'], dat['DEC'])
-ran['WEIGHT_SYSTOT_JB'] = m.get_weights(ran['RA'], ran['DEC'])
+dat['WEIGHT_SYSTOT'] = m.get_weights(dat['RA'], dat['DEC'])
+ran['WEIGHT_SYSTOT'] = m.get_weights(ran['RA'], ran['DEC'])
 
+#-- Make plots
 if args.plot_deltas:
     print('Plotting deltas versus systematics')
     m.plot_overdensity(ylim=[0.5, 1.5])
@@ -446,6 +501,12 @@ if args.plot_deltas:
         plt.savefig(args.save_plot_deltas)
     plt.show()
 
+#-- Export to table
+if args.export:
+    print('Exporting to', args.export)
+    m.export(args.export)
+    
+#-- Export catalogs
 if args.output:
     print('Exporting catalogs to ', args.output)
     dat.write(args.output+'.dat.fits', overwrite=True)
