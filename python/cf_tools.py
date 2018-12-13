@@ -253,7 +253,7 @@ class Wedges:
             self.cf = self.shape2d(self.cf)
             self.dcf = self.shape2d(self.dcf)
             if rebin_r>1:
-                nr = self.nr/rebin_r
+                nr = self.nr//rebin_r
                 self.mu2d = N.mean(N.reshape(self.mu2d, (nr, rebin_r, -1)), axis=1)
                 self.r2d  = N.mean(N.reshape(self.r2d,  (nr, rebin_r, -1)), axis=1)
                 self.dd = N.sum(N.reshape(self.dd,  (nr, rebin_r, -1)), axis=1) 
@@ -266,8 +266,11 @@ class Wedges:
                 dd_norm = 0.5*(self.wd**2-self.wd2)
                 rr_norm = 0.5*(self.wr**2-self.wr2)
                 dr_norm = self.wd*self.wr
-                self.cf = self.dd/self.rr*rr_norm/dd_norm-2.*self.dr/self.rr*rr_norm/dr_norm+1.
-                self.dcf = (1+self.cf)*(1./N.sqrt(self.dd)+1./N.sqrt(self.dr)+1./N.sqrt(self.rr))
+                self.cf = self.dd/self.rr*rr_norm/dd_norm \
+                          -2.*self.dr/self.rr*rr_norm/dr_norm + 1.
+                self.dcf = (1+self.cf)*(1./N.sqrt(self.dd) + \
+                                        1./N.sqrt(self.dr) + \
+                                        1./N.sqrt(self.rr))
 
             self.compute_wedges(muranges=muranges)
 
@@ -305,7 +308,9 @@ class Wedges:
             else:
                 P.ylabel(r'$r^{%d} \xi_{\mu%d}$ [$h^{%d}$ Mpc$^{%d}]$'%\
                          (scale_r, i, -scale_r, scale_r))
+            P.title(r'$%.2f < \mu < %.2f$'%(self.muranges[i][0], self.muranges[i][1]))
         P.xlabel(r'$r$ [$h^{-1}$ Mpc]')
+        P.tight_layout()
 
     def plot_many(self, label=None, n=-1, scale_r=2, alpha=1.0, color=None):
 
@@ -314,18 +319,19 @@ class Wedges:
             return
 
         cc = Wedges()
+        cc.muranges = self.muranges
         for i in range(self.nmocks):
             cc.r = self.r
             cc.weds = self.weds_many[i]
             cc.plot(n=n, scale_r=scale_r, alpha=alpha, color=color)
 
     @staticmethod
-    def combine_mocks(root, rebin_r=8):
+    def combine_mocks(root,  muranges = [[0., 0.5], [0.5, 0.8], [0.8, 1.]], rebin_r=5):
 
         allm = glob.glob(root)
         nmocks = len(allm)
 
-        cs = [Wedges(m, rebin_r=rebin_r) for m in allm]
+        cs = [Wedges(m, muranges=muranges, rebin_r=rebin_r) for m in allm]
     
         weds_many = N.array([c.weds for c in cs])
         weds_flat = N.array([w.ravel() for w in weds_many])

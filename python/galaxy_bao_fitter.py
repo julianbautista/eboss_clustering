@@ -333,13 +333,13 @@ class Cosmo:
 
     @staticmethod
     def test(z=0, 
-             pars_to_test=['aiso', 'epsilon', 
+             pars_to_test=['aiso', 'epsilon', 'f', 
                            'Sigma_rec', 'Sigma_s', 'Sigma_NL'],
              pars0 = {'ap':1.0, 'at': 1.0, 'bias':1.0, 'beta':0.6, \
                 'Sigma_par':10., 'Sigma_per':6., 'Sigma_s':4., 'Sigma_rec':0.},
              rmin=1., rmax=200., scale_r=2):
 
-        r = np.linspace(rmin, rmax, 200)
+        r = np.linspace(rmin, rmax, 2000)
         cosmo = Cosmo(z=z, name='planck')
 
         lss = ['-', '--', ':']
@@ -382,7 +382,26 @@ class Cosmo:
                         plt.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
             plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
             plt.legend(loc=0, fontsize=10)
+            plt.tight_layout()
 
+        if 'f' in pars_to_test:
+            plt.figure(figsize=(6,5))
+            pars = pars0.copy()
+            for i, f in enumerate([0.5, 0.7, 0.9]):
+                pars['beta'] = f/pars['bias']
+                xi_mult = cosmo.get_multipoles_2d(r, pars)
+                for j in range(2):
+                    plt.subplot(2, 1, j+1)
+                    plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
+                           label=r'$f = %.2f$'%f)
+                    if i==0:
+                        plt.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
+            plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
+            plt.legend(loc=0, fontsize=10)
+            plt.tight_layout()
+
+
+                
         if 'Sigma_rec' in pars_to_test:
             plt.figure(figsize=(6, 5))
             pars = pars0.copy()
@@ -397,6 +416,7 @@ class Cosmo:
                         plt.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
             plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
             plt.legend(loc=0, fontsize=10)
+            plt.tight_layout()
             
 
         if 'Sigma_s' in pars_to_test: 
@@ -413,6 +433,7 @@ class Cosmo:
                         plt.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
             plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
             plt.legend(loc=0, fontsize=10)
+            plt.tight_layout()
         
         if 'Sigma_NL' in pars_to_test:        
             plt.figure(figsize=(6, 5))
@@ -430,6 +451,7 @@ class Cosmo:
                         plt.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
             plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
             plt.legend(loc=0, fontsize=10)
+            plt.tight_layout()
 
         if 'beam' in pars_to_test:
             plt.figure(figsize=(6, 5))
@@ -643,7 +665,7 @@ class Chi2:
 
 
         self.model=Model(fit_broadband=fit_broadband, fit_iso=fit_iso,\
-                    fit_multipoles=fit_multipoles, no_peak=no_peak, norm_pk=1,
+                    fit_multipoles=fit_multipoles, no_peak=no_peak, norm_pk=0,
                     z=z)
         self.model.cosmo.get_dist_rdrag()
         self.DM_rd = self.model.cosmo.DM_rd
