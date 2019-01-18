@@ -69,8 +69,6 @@ class Corr:
     def coadd_old(c1, c2):
         c = copy.deepcopy(c1)                
 
-        f = c2.wd/c1.wd
-
         c.dd = c1.dd+c2.dd
         c.dr = c1.dr+c2.dr
         c.rr = c1.rr+c2.rr
@@ -250,15 +248,15 @@ class Wedges:
                                         1./N.sqrt(self.rr))
 
             self.compute_wedges(muranges=muranges)
+            self.nmocks = 1
+            self.weds_many = None
 
     def shape2d(self, x):
         return N.reshape(x, (self.nr, self.nmu))
 
     def compute_wedges(self, muranges=[[0., 0.5], [0.5, 0.8], [0.8, 1.]]):
 
-        nwed = len(muranges)
         weds = list()
-
         for murange in muranges:
             w = (self.mu > murange[0])&(self.mu<=murange[1])
             wed = N.mean(self.cf[:, w], axis=1)
@@ -390,6 +388,9 @@ class Multipoles:
             self.norm_dr = dr_norm
             self.norm_rr = rr_norm
             self.compute_multipoles()
+            self.nmocks = 1
+            self.monos = None
+            self.quads = None
 
     def read_multipoles(self, fin):
         data = N.loadtxt(fin)
@@ -400,7 +401,7 @@ class Multipoles:
 
     def read_cov(self, cov_file):
 
-        i, j, r1, r2, coss = N.loadtxt(cov_file, unpack=1)
+        i, _, r1, _, coss = N.loadtxt(cov_file, unpack=1)
         r = N.unique(r1)
         nr = r.size
         if (r != self.r).any():
