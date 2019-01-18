@@ -64,29 +64,6 @@ class Corr:
                    self.dd[i], self.dr[i], self.rr[i] , file=fout)
         fout.close()
 
-    def export_pylya(self, fout='', zeff=0.74):
-
-        if fout=='':
-            fout = self.filename
-
-        #-- need to transpose everything
-        #-- convetion CUTE != convention baofit or pylya
-
-        da = self.transpose(self.cf) 
-        co = N.diag(self.transpose(self.dcf**2))
-        dm = N.diag(N.ones(da.size))
-        rp = self.transpose(self.rp)
-        rt = self.transpose(self.rt)
-        z = N.ones(da.size)*zeff
-        col1=fits.Column(name="DA",format='D',array=da)
-        col2=fits.Column(name="CO",format=str(len(da))+'D',array=co)
-        col3=fits.Column(name="DM",format=str(len(da))+'D',array=dm)
-        col4=fits.Column(name="RP",format='D',array=rp)
-        col5=fits.Column(name="RT",format='D',array=rt)
-        col6=fits.Column(name="Z",format='D',array=z)
-        cols=fits.ColDefs([col1,col2,col3,col4,col5,col6])
-        tbhdu=fits.BinTableHDU.from_columns(cols)
-        tbhdu.writeto(fout+"-exp.fits", clobber=True)
 
     @staticmethod
     def coadd_old(c1, c2):
