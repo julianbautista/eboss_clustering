@@ -43,7 +43,11 @@ parser.add_argument('--fit_quad', help='Use quadrupole', \
                     action='store_true', default=False)
 parser.add_argument('--fit_iso', help='Perform isotropic fit', \
                     action='store_true', default=False)
+parser.add_argument('--fit_beta', help='Perform fit of beta, not f=growth rate', \
+                    action='store_true', default=False)
 parser.add_argument('--fit_cross', help='Perform cross-correlation fit with two bias values', 
+                    action='store_true', default=False)
+parser.add_argument('--fit_amp', help=r'Perform fit on overall amplitude of the model (e.g. \bar{THI})', 
                     action='store_true', default=False)
 parser.add_argument('--fit_beam', help='Perform fit of parallel damping (beam effect)', \
                     action='store_true', default=False)
@@ -100,6 +104,7 @@ fit_nopeak=args.fit_nopeak
 fit_broadband=args.fit_bb
 fit_quad=args.fit_quad
 fit_iso=args.fit_iso
+fit_beta=args.fit_beta
 plotit=args.plotit
 nmocks=args.nmocks
 fixes=args.fixes
@@ -165,16 +170,14 @@ model = Model(fit_broadband=fit_broadband,
               z=z, fit_iso=fit_iso, no_peak=0, 
               fit_cross=args.fit_cross, 
               fit_beam=args.fit_beam,
+              fit_amp=args.fit_amp,
+              fit_beta=args.fit_beta,
               bb_min=args.bb_min, bb_max=args.bb_max)
 
 chi2 = Chi2(data=data, model=model)
 chi2.fit(fixes=fixes, priors=priors, limits=limits) 
 chi2.export(output+'.pars')
 
-#if fit_quad and 'at' in chi2.errors and 'ap' in chi2.errors:
-    #fout=open(output+'.at.ap.cov', 'w')
-    #print(chi2.covariance['at', 'ap']/(chi2.errors['at']*chi2.errors['ap']), file=fout)
-#    fout.close()
 
 
 if fit_nopeak:
@@ -182,7 +185,7 @@ if fit_nopeak:
                          fit_multipoles=fit_quad,
                          name=args.cosmology, norm_pk=norm_pk, 
                          non_linear=args.non_linear_pk, 
-                         z=z, fit_iso=fit_iso, no_peak=1)  
+                         z=z, fit_iso=fit_iso, fit_beta=fit_beta, no_peak=1)  
     chi2_nopeak = Chi2(data=data, model=model_nopeak)
     chi2_nopeak.fit(fixes=fixes, priors=priors, limits=limits)
     chi2_nopeak.export(output+'-nopeak.pars')

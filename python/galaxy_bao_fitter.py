@@ -237,15 +237,20 @@ class Cosmo:
 
 
         bias = pars['bias']
-        #f = pars['f']
-        beta = pars['beta']
+        if 'beta' in pars:
+            beta = pars['beta']
+            fit_beta = True
+        else:
+            f = pars['f']
+            fit_beta = False
+
         Sigma_rec = pars['Sigma_rec']
 
         #-- dealing with cross-correlation
         if 'bias2' in pars:
             bias2 = pars['bias2']
-            #f2 = pars['f2']
-            beta2 = pars['beta2']
+            if fit_beta:
+                beta2 = pars['beta2']
         else:
             bias2 = bias*1.
             #f2 = f*1.
@@ -253,14 +258,18 @@ class Cosmo:
 
         #-- linear Kaiser redshift space distortions with reconstruction damping
         if Sigma_rec == 0:
-            #Kaiser = (bias+f*amu2d**2)*(bias2+f2*amu2d**2)
-            Kaiser = bias*bias2*(1+beta*amu2d**2)*(1+beta2*amu2d**2)
+            if fit_beta:
+                Kaiser = bias*bias2*(1+beta*amu2d**2)*(1+beta2*amu2d**2)
+            else:
+                Kaiser = (bias+f*amu2d**2)*(bias2+f*amu2d**2)
         else:
-            #Kaiser = (bias +f *(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2) * \
-            #         (bias2+f2*(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2)
-            Kaiser = bias*bias2*\
-                     (1+beta *(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2) * \
-                     (1+beta2*(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2)
+            if fit_beta:
+                Kaiser = bias*bias2*\
+                         (1+beta *(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2) * \
+                         (1+beta2*(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2)
+            else:
+                Kaiser = (bias +f *(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2) * \
+                         (bias2+f *(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2)
 
         #-- Fingers of God
         Sigma_stream = pars['Sigma_s']
@@ -283,6 +292,8 @@ class Cosmo:
         pk2d_out *= Kaiser
         pk2d_out *= Dnl**2 
         pk2d_out /= (at**2*ap)
+        if 'THI' in pars:
+            pk2d_out *= pars['THI']
 
         pk_mult = np.zeros((ell_max//2+1, k.size))
         dmu = np.gradient(mu)
@@ -342,7 +353,7 @@ class Cosmo:
         r = np.linspace(rmin, rmax, 2000)
         cosmo = Cosmo(z=z, name='planck')
 
-        lss = ['-', '--', ':']
+        lss = ['-', '--', ':', '-.']
         if 'aiso' in pars_to_test:
             plt.figure(figsize=(6, 5))
             pars = pars0.copy()
@@ -380,6 +391,25 @@ class Cosmo:
                            label=r'$\epsilon = %.2f$'%epsilon)
                     if i==0:
                         plt.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
+            plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
+            plt.legend(loc=0, fontsize=10)
+            plt.tight_layout()
+
+        if 'bias' in pars_to_test:
+            plt.figure(figsize=(6,5))
+            pars = pars0.copy()
+            for i, bias in enumerate([0.5, 1.0, 1.5]):
+                pars['bias'] = bias
+                xi_mult = cosmo.get_multipoles_2d(r, pars)
+                for j in range(2):
+                    plt.subplot(2, 1, j+1)
+                    plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
+                           label=r'$bias = %.2f$'%bias)
+                    if i==0:
+                        if scale_r:
+                            plt.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
+                        else:
+                            plt.ylabel(r'$\xi_{%d}$'%(j*2))
             plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
             plt.legend(loc=0, fontsize=10)
             plt.tight_layout()
@@ -422,7 +452,7 @@ class Cosmo:
         if 'Sigma_s' in pars_to_test: 
             plt.figure(figsize=(6, 5))
             pars = pars0.copy()
-            for i, s in enumerate([0., 4., 8.]):
+            for i, s in enumerate([0.1, 5., 10.]):
                 pars['Sigma_s'] = s
                 xi_mult = cosmo.get_multipoles_2d(r, pars)
                 for j in range(2):
@@ -456,13 +486,12 @@ class Cosmo:
         if 'beam' in pars_to_test:
             plt.figure(figsize=(6, 5))
             pars = pars0.copy()
-            #r = np.linspace(1, 20, 100)
-            for i, beam in enumerate([4.61, 6.34, 14.4]):
+            for i, beam in enumerate([0, 4.61, 6.34, 14.4]):
                 pars['beam'] = beam
                 xi_mult = cosmo.get_multipoles_2d(r, pars)
                 for j in range(2):
                     plt.subplot(2, 1, j+1)
-                    plt.plot(r, xi_mult[j]*r*scale_r, ls=lss[i], color='k', lw=2, \
+                    plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
                             label=r'$R_{\rm beam} = %.2f Mpc/h$'%beam)
                     if i==0:
                         plt.ylabel(r'$\xi_{%d}$'%(j*2))
@@ -470,7 +499,23 @@ class Cosmo:
             plt.legend(loc=0, fontsize=10)
             plt.tight_layout()
         
-            
+        if 'THI' in pars_to_test:
+            plt.figure(figsize=(6, 5))
+            pars = pars0.copy()
+            for i, THI in enumerate([0.5, 1.0, 1.5]):
+                pars['THI'] = THI
+                xi_mult = cosmo.get_multipoles_2d(r, pars)
+                for j in range(2):
+                    plt.subplot(2, 1, j+1)
+                    plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
+                            label=r'$\bar{T}_{\rm HI} = %.2f [mK]$'%THI)
+                    if i==0:
+                        plt.ylabel(r'$\xi_{%d}$'%(j*2))
+            plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
+            plt.legend(loc=0, fontsize=10)
+            plt.tight_layout()
+        
+             
 
     def get_dist_rdrag(self):
         
@@ -532,9 +577,10 @@ class Model:
 
     def __init__(self, name='challenge', z = 0, 
                  fit_broadband=True, bb_min=-2, bb_max=0, 
-                 norm_pk=False, non_linear=False,
+                 norm_pk=False, non_linear=False, no_peak=False,
                  fit_iso=False, fit_multipoles=False, 
-                 no_peak=False, fit_cross=False, fit_beam=False):
+                 fit_beta=False, fit_cross=False, 
+                 fit_amp=False, fit_beam=False):
 
         cosmo = Cosmo(z=z, name=name, norm_pk=norm_pk, non_linear=non_linear)
 
@@ -553,20 +599,30 @@ class Model:
             pars_names += ['Sigma_per', 'Sigma_par']
             pars['Sigma_per'] = 6.
             pars['Sigma_par'] = 10.
-        
-        #pars_names += ['bias', 'f', 'Sigma_s', 'Sigma_rec']
-        pars_names += ['bias', 'beta', 'Sigma_s', 'Sigma_rec']
+       
+         
+        pars_names += ['bias', 'Sigma_s', 'Sigma_rec']
         pars['bias'] = 3.0
-        #pars['f'] = 0.3
-        pars['beta'] = 0.3
         pars['Sigma_s'] = 4.
-        pars['Sigma_rec'] = 1000.
+        pars['Sigma_rec'] = 0.
+        
+        if fit_beta:
+            pars['beta'] = 0.3
+            pars_names += ['beta']
+        else:
+            pars['f'] = 0.8
+            pars_names += ['f']
+
         if fit_cross:
-            #pars_names += ['bias2', 'f2']        
-            pars_names += ['bias2', 'beta2']        
+            pars_names += ['bias2']        
             pars['bias2'] = 1.
-            #pars['f2'] = 0.5
-            pars['beta2'] = 0.5
+            if fit_beta:
+                pars_names += ['beta2']
+                pars['beta2'] = 0.5
+
+        if fit_amp:
+            pars['THI'] = 0.3e-3
+            pars_names += ['THI']
 
         if fit_beam:
             pars_names += ['beam']
@@ -592,6 +648,8 @@ class Model:
         self.no_peak = no_peak
         self.fit_cross = fit_cross
         self.fit_beam = fit_beam
+        self.fit_beta = fit_beta
+        self.fit_amp = fit_amp
         self.cosmo = cosmo
         
     def value(self, rout, pars):
@@ -776,21 +834,27 @@ class Chi2:
             if not model_only:
                 plt.errorbar(r, mono*r**scale_r, dmono*r**scale_r, fmt='o')
             plt.plot(r, mono_model*r**scale_r, label=label)
-            plt.ylabel(r'$r^{%d} \xi_0$ [$h^{%d}$ Mpc$^{%d}]$'%\
-                     (scale_r, -scale_r, scale_r))
+            if scale_r!=0:
+                plt.ylabel(r'$r^{%d} \xi_0$ [$h^{%d}$ Mpc$^{%d}]$'%\
+                         (scale_r, -scale_r, scale_r))
+            else:
+                plt.ylabel(r'$\xi_0$', fontsize=16)
             plt.subplot(212)
             if not model_only:
                 plt.errorbar(r, quad*r**scale_r, dquad*r**scale_r, fmt='o')
             plt.plot(r, quad_model*r**scale_r)
-            plt.ylabel(r'$r^{%d} \xi_2$ [$h^{%d}$ Mpc$^{%d}]$'%\
-                    (scale_r, -scale_r, scale_r))
+            if scale_r!=0:
+                plt.ylabel(r'$r^{%d} \xi_2$ [$h^{%d}$ Mpc$^{%d}]$'%\
+                        (scale_r, -scale_r, scale_r))
+            else:
+                plt.ylabel(r'$\xi_2$', fontsize=16)
         else: 
             if not model_only:
                 plt.errorbar(r, cf*r**scale_r, dcf*r**scale_r, fmt='o')
             plt.plot(r, cf_model*r**scale_r, label=label)
             plt.ylabel(r'$r^{%d} \xi_0$ [$h^{%d}$ Mpc$^{%d}]$'%\
                      (scale_r, -scale_r, scale_r))
-        plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
+        plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$', fontsize=16)
 
     def scan(self, par_name='alpha', par_min=0.8, par_max=1.2, par_nsteps=400):
 

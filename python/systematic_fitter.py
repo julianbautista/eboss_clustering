@@ -27,7 +27,11 @@ class Syst:
         assert( rand_syst.size == self.nrand )
         assert( name not in self.syst_names )
         self.syst_names.append(name)
+        wd = np.isnan(data_syst)|np.isinf(data_syst)
+        data_syst[wd] = hp.UNSEEN 
         self.data_syst.append(data_syst)
+        wr = np.isnan(rand_syst)|np.isinf(rand_syst)
+        rand_syst[wr] = hp.UNSEEN 
         self.rand_syst.append(rand_syst)
         self.nsyst += 1
 
@@ -40,18 +44,18 @@ class Syst:
 
         w_data = np.ones(self.ndata) == 1
         w_rand = np.ones(self.nrand) == 1
-        if p!=0:
-            for i in range(self.nsyst):
-                name = self.syst_names[i]
-                data_syst = self.data_syst[i]
-                rand_syst = self.rand_syst[i]
-                syst_min = np.percentile(data_syst, p/2) #22.4
-                syst_max = np.percentile(data_syst, 100-p/2) #23.8
-                w_data &= (data_syst >= syst_min) & \
-                          (data_syst <= syst_max)
-                w_rand &= (rand_syst >= syst_min) & \
-                          (rand_syst <= syst_max)
-                print(' cutting ', name, 'from', syst_min, 'to', syst_max)
+        for i in range(self.nsyst):
+            name = self.syst_names[i]
+            data_syst = self.data_syst[i]
+            rand_syst = self.rand_syst[i]
+            w = data_syst!=hp.UNSEEN
+            syst_min = np.percentile(data_syst[w], p/2) #22.4
+            syst_max = np.percentile(data_syst[w], 100-p/2) #23.8
+            w_data &= (data_syst >= syst_min) & \
+                      (data_syst <= syst_max)
+            w_rand &= (rand_syst >= syst_min) & \
+                      (rand_syst <= syst_max)
+            print(' cutting ', name, 'from', syst_min, 'to', syst_max)
             
         print('Number of galaxies before/after cutting outliers: ', w_data.size, np.sum(w_data))
         print('Number of randoms  before/after cutting outliers: ', w_rand.size, np.sum(w_rand))
@@ -100,7 +104,6 @@ class Syst:
         for i in range(self.nsyst):
             s.add_syst(self.syst_names[i], self.data_syst[i, wd], self.rand_syst[i, wr])
         s.cut_outliers(p=0)
-        s.w_data = 
         s.prepare(nbins=self.nbins)
         s.edges = self.edges
         s.centers = self.centers
