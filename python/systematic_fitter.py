@@ -6,7 +6,7 @@ import pylab as plt
 import healpy as hp
 from astropy.io import fits
 from astropy.table import Table
-import iminuit
+from iminuit import Minuit
 import iminuit.frontends
 from scipy.optimize import minimize
 
@@ -305,7 +305,7 @@ class Syst:
 
         self.priors = priors
 
-        mig = iminuit.Minuit(self.get_chi2, throw_nan=False, \
+        mig = Minuit(self.get_chi2, throw_nan=False, \
                              forced_parameters=par_names, \
                              print_level=1, errordef=1, \
                              frontend=iminuit.frontends.ConsoleFrontend(), \
