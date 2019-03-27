@@ -10,7 +10,7 @@ from scipy.optimize import minimize
 import argparse
 import systematic_fitter
 
-indir = '/Users/julian/Work/lrgs/v4/cats'
+indir = os.environ['LRG_DIR']+'/cats'
 dat_file = indir+'/eBOSS_LRG_full_SGC_v4.dat.fits'
 ran_file = indir+'/eBOSS_LRG_full_SGC_v4.ran.fits'
 zmin = 0.6
@@ -41,7 +41,7 @@ wr = (ran['Z']>=zmin)&\
 data_ra, data_dec = dat['RA'][wd], dat['DEC'][wd]
 rand_ra, rand_dec = ran['RA'][wr], ran['DEC'][wr]
 data_we = (dat['WEIGHT_CP']*dat['WEIGHT_FKP']/dat['sector_SSR'])[wd]
-rand_we = (ran['COMP_BOSS'])[wr]#*ran['WEIGHT_FKP'])[wr]
+rand_we = (ran['COMP_BOSS'])[wr]*(ran['WEIGHT_FKP'])[wr]
 
 
 def get_pix(nside, ra, dec, nest=0):
@@ -58,9 +58,16 @@ def flux_to_mag(flux, band, ebv=None):
         mag -= ext_coeff*ebv
     return mag
 
-#-- NHI map
-nhi = Table.read('/Users/julian/Work/software/eboss_clustering/etc/NHI_HPX.fits.gz')['NHI'].data
 
+#-- Dictionaries containing all different systematic values
+data_syst = {}
+rand_syst = {}
+
+
+
+#-- NHI map
+nhi = Table.read(os.environ['EBOSS_CLUSTERING_DIR']+
+                 '/etc/NHI_HPX.fits.gz')['NHI'].data
 #-- rotate from galactic to equatorial coordinates
 R = hp.Rotator(coord=['G', 'C'], inv=True)
 theta, phi = hp.pix2ang(hp.get_nside(nhi), np.arange(nhi.size))
@@ -68,38 +75,57 @@ mtheta, mphi = R(theta, phi)
 nhi_eq = hp.get_interp_val(nhi, mtheta, mphi)
 data_nhi = nhi_eq[get_pix(hp.get_nside(nhi_eq), data_ra, data_dec)]
 rand_nhi = nhi_eq[get_pix(hp.get_nside(nhi_eq), rand_ra, rand_dec)]
+data_syst['log10(NHI)'] = np.log10(data_nhi)
+rand_syst['log10(NHI)'] = np.log10(rand_nhi)
+
 
 #-- SDSS systematics
-sdss_syst = Table.read('/Users/julian/Work/software/eboss_clustering/etc/SDSS_WISE_imageprop_nside512.fits')
+sdss_syst = Table.read(os.environ['EBOSS_CLUSTERING_DIR']+
+                       '/etc/SDSS_WISE_imageprop_nside512.fits')
 data_pix = get_pix(512, data_ra, data_dec) 
 rand_pix = get_pix(512, rand_ra, rand_dec)
-
+syst_names = ['STAR_DENSITY', 'EBV', 'PSF_Z', 'DEPTH_I', 'AIRMASS', 'W1_MED', 'W1_COVMED']
+for syst_name in syst_names:
+    if 1==0 and syst_name.startswith('DEPTH'):
+        depth_minus_ebv = flux_to_mag(sdss_syst[syst_name], 3, ebv=sdss_syst['EBV']).data
+        data_syst[syst_name+'_MINUS_EBV'] = depth_minus_ebv[data_pix]
+        rand_syst[syst_name+'_MINUS_EBV'] = depth_minus_ebv[rand_pix]
+    else:
+        data_syst[syst_name] = sdss_syst[syst_name][data_pix].data
+        rand_syst[syst_name] = sdss_syst[syst_name][rand_pix].data
+    #s.add_syst(syst_name, data_syst, rand_syst)
 
 #-- Create fitter object
 s = systematic_fitter.Syst(data_we, rand_we)
-s.add_syst('log10(NHI)', np.log10(data_nhi), np.log10(rand_nhi))
-
-#-- add SDSS systematics to fitter
-syst_names = ['STAR_DENSITY', 'EBV', 'PSF_Z', 'DEPTH_I', 'AIRMASS', 'W1_MED', 'W1_COVMED']
-for syst_name in syst_names:
-    data_syst = sdss_syst[syst_name][data_pix]
-    rand_syst = sdss_syst[syst_name][rand_pix]
-    if syst_name.startswith('DEPTH'):
-        data_syst = flux_to_mag(data_syst, 3, ebv=sdss_syst['EBV'][data_pix])
-        rand_syst = flux_to_mag(rand_syst, 3, ebv=sdss_syst['EBV'][rand_pix])
-        syst_name += '_MINUS_EBV'
-    w = np.isnan(data_syst)|np.isinf(data_syst)
-    data_syst[w] = hp.UNSEEN
-    w = np.isnan(rand_syst)|np.isinf(rand_syst)
-    rand_syst[w] = hp.UNSEEN
-    s.add_syst(syst_name, data_syst, rand_syst)
-
+for syst_name in data_syst.keys():
+    s.add_syst(syst_name, data_syst[syst_name], rand_syst[syst_name])
 s.cut_outliers()
 
 nbins=20
 s.prepare(nbins=nbins)
-s.fit_minuit(fit_maps=['STAR_DENSITY', 'log10(NHI)'])
-s.plot_overdensity(nbinsh=100, ylim=[0.5, 1.5], title='SGC: Fitting STAR_DENSITY + NHI + EBV')
+s.fit_minuit(fit_maps=['STAR_DENSITY', 'log10(NHI)', 'DEPTH_I'])
+s.plot_overdensity(ylim=[0.5, 1.5], title='SGC: global fit')
+
+data_z = dat['Z'][wd]
+rand_z = ran['Z'][wr]
+data_z = flux_to_mag(dat['FIBER2FLUX'][:, 4].data[wd], 4).data
+rand_z = np.zeros(rand_we.size)+np.median(data_z)
+nbinsz = 3
+zbins = np.array([ np.percentile(data_z, i*100/(nbinsz)) for i in range(nbinsz+1)])
+
+for i in range(nbinsz):
+    wdz = (data_z>=zbins[i])&(data_z<zbins[i+1])
+    #wrz = (rand_z>=zbins[i])&(rand_z<zbins[i+1])
+    wrz = np.ones(rand_z.size)==1
+    ss = s.get_subsample(wdz, wrz)
+    ss.pars = s.pars
+    ss.fit_index = s.fit_index
+    ss.plot_overdensity(ylim=[0.5, 1.5], title='SGC: %.2f < z < %.2f global fit'%(zbins[i], zbins[i+1]))
+    ss.fit_minuit(fit_maps=['STAR_DENSITY', 'log10(NHI)', 'DEPTH_I'])
+    print('chi2 (before) =', ss.get_chi2())
+    print('chi2 (global fit) =', ss.get_chi2(*s.pars))
+    print('chi2 (zbin fit) =', ss.get_chi2(*ss.best_pars.values()))
+    ss.plot_overdensity(ylim=[0.5, 1.5], title='SGC: %.2f < z < %.2f fit in this zbin'%(zbins[i], zbins[i+1]))
 
 #-- Perform the fit
 #s.fit_minuit(fit_maps=['STAR_DENSITY'])

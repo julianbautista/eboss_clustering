@@ -8,7 +8,7 @@ import pylab as P
 import copy
 import healpy as hp
 from subprocess import call
-from systematics import MultiFit
+#from systematics import MultiFit
 
 from astropy.io import fits
 from astropy.coordinates import SkyCoord

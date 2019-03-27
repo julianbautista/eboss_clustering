@@ -21,6 +21,8 @@ class Cosmo:
     def get_matter_power_spectrum(self, pars=None, z=0.0, non_linear=0, \
                                         name='challenge', norm_pk=0):
 
+
+        #-- to set sigma8 value, scale As by the square of ratio of sigma8
         if pars is None:
             pars = camb.CAMBparams()
             if name == 'challenge':
@@ -46,6 +48,13 @@ class Cosmo:
                                    YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.0,
                                     num_massive_neutrinos=0)
                 pars.InitPower.set_params(As=2.224615e-09, ns=0.963)
+            elif name == 'EZmock':
+                pars.set_cosmology(H0=67.77, ombh2=0.0221399210, \
+                                   omch2=0.1189110239, \
+                                   YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.0,
+                                    num_massive_neutrinos=0)
+                pars.InitPower.set_params(As=2.11622e-09, ns=0.9611)
+            
                 
 
         pars.set_dark_energy()
@@ -273,7 +282,7 @@ class Cosmo:
 
         #-- Fingers of God
         Sigma_stream = pars['Sigma_s']
-        Dnl = 1./( 1 + ak2d**2*amu2d**2*Sigma_stream**2)
+        Dnl = 1./( 1 + ak2d**2*amu2d**2*Sigma_stream**2/2)
 
         #-- Sideband model (no BAO peak)
         apk2d_s = np.interp(ak2d, self.k, self.pk_sideband)
@@ -604,7 +613,7 @@ class Model:
         pars_names += ['bias', 'Sigma_s', 'Sigma_rec']
         pars['bias'] = 3.0
         pars['Sigma_s'] = 4.
-        pars['Sigma_rec'] = 0.
+        pars['Sigma_rec'] = 15.
         
         if fit_beta:
             pars['beta'] = 0.3

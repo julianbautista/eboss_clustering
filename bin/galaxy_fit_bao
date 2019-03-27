@@ -26,7 +26,7 @@ parser.add_argument('--non_linear_pk',
                     action='store_true', default=False)
 parser.add_argument('--cosmology',
                     help='Name of cosmological parameters. Examples: '+
-                    'challenge, qpm, planck, outerim', default='challenge')
+                    'challenge, qpm, planck, outerim, EZmock', default='challenge')
 parser.add_argument('--rmin', help='Minimum separation', 
                     type=float, default=30.)
 parser.add_argument('--rmax', help='Maximum separation', 
