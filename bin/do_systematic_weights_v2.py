@@ -11,47 +11,6 @@ import argparse
 import fitsio
 import systematic_fitter
 
-indir = os.environ['LRG_DIR']+'/cats'
-cap = 'NGC'
-dat_file = indir+f'/eBOSS_LRG_full_{cap}_vtest.dat.fits'
-ran_file = indir+f'/eBOSS_LRG_full_{cap}_vtest.ran.fits'
-out_file = indir+f'/eBOSS_LRG_full_{cap}_vtest'
-sample_name = f'eBOSS LRG {cap} test DR16'
-sample_root = f'LRG_{cap}_vtest'
-
-zmin = 0.6
-zmax = 1.0
-random_fraction = 1.0
-
-#-- Read data and randoms
-print('Reading galaxies from ', dat_file)
-dat = Table.read(dat_file)
-print('Reading randoms  from ', ran_file)
-ran = Table.read(ran_file)
-
-#-- Cut the sample 
-print('Cutting galaxies and randoms between zmin=%.3f and zmax=%.3f'%\
-     (zmin, zmax))
-
-#-- Select spectroscopic sample
-wd = ((dat['IMATCH']==1)|(dat['IMATCH']==2))&\
-     (dat['Z']>=zmin)&\
-     (dat['Z']<=zmax)&\
-     (dat['COMP_BOSS']>0.5)&\
-     (dat['sector_SSR']>0.5) 
-wr = (ran['Z']>=zmin)&\
-     (ran['Z']<=zmax)&\
-     (ran['COMP_BOSS']>0.5)&\
-     (ran['sector_SSR']>0.5)&\
-     (np.random.rand(len(ran))<random_fraction)
-
-
-#-- Defining RA, DEC and weights
-data_ra, data_dec = dat['RA'][wd], dat['DEC'][wd]
-rand_ra, rand_dec = ran['RA'][wr], ran['DEC'][wr]
-data_we = (dat['WEIGHT_CP']*dat['WEIGHT_FKP']/dat['sector_SSR'])[wd]
-rand_we = (ran['COMP_BOSS'])[wr]*(ran['WEIGHT_FKP'])[wr]
-
 
 def get_pix(nside, ra, dec, nest=0):
     return hp.ang2pix(nside, np.radians(-dec+90), np.radians(ra), nest=nest)
@@ -90,18 +49,32 @@ def read_systematic_maps(data_ra, data_dec, rand_ra, rand_dec):
 
     #-- SDSS systematics
     sdss_syst = Table.read(os.environ['EBOSS_CLUSTERING_DIR']+
-                           '/etc/SDSS_WISE_imageprop_nside512.fits')
+                           '/etc/SDSSimageprop_Nside512.fits')
     data_pix = get_pix(512, data_ra, data_dec) 
     rand_pix = get_pix(512, rand_ra, rand_dec)
-    syst_names = ['STAR_DENSITY', 'EBV', 'PSF_Z', 'DEPTH_I', 'AIRMASS', 'W1_MED', 'W1_COVMED']
+    syst_names = ['EBV', 'SKY_I', 'SKY_Z', 'PSF_I', 'PSF_Z', 'DEPTH_I', 'DEPTH_Z', 'AIRMASS']
     for syst_name in syst_names:
-        if 1==0 and syst_name.startswith('DEPTH_I'):
-            depth_minus_ebv = flux_to_mag(sdss_syst[syst_name], 3, ebv=sdss_syst['EBV']).data
+        if 1==1 and syst_name.startswith('DEPTH'):
+            if syst_name.endswith('R'):
+                cam = 2
+            if syst_name.endswith('I'):
+                cam = 3
+            if syst_name.endswith('Z'):
+                cam = 4
+            depth_minus_ebv = flux_to_mag(sdss_syst[syst_name], cam, ebv=sdss_syst['EBV']).data
             data_syst[syst_name+'_MINUS_EBV'] = depth_minus_ebv[data_pix]
             rand_syst[syst_name+'_MINUS_EBV'] = depth_minus_ebv[rand_pix]
         else:
             data_syst[syst_name] = sdss_syst[syst_name][data_pix].data
             rand_syst[syst_name] = sdss_syst[syst_name][rand_pix].data
+
+    #-- Star density
+    star_density = np.loadtxt(os.environ['EBOSS_CLUSTERING_DIR']+
+                              '/etc/allstars17.519.9Healpixall256.dat')
+    data_pix = get_pix(256, data_ra, data_dec, nest=1)
+    rand_pix = get_pix(256, rand_ra, rand_dec, nest=1)
+    data_syst['STAR_DENSITY'] = star_density[data_pix]
+    rand_syst['STAR_DENSITY'] = star_density[rand_pix]
 
     return data_syst, rand_syst
 
@@ -137,8 +110,9 @@ def fit_per_bin(s, zname, data_z, nbinsz=10, p=1., fit_maps=None):
         
         ss = s.get_subsample(wdz)
         ss.fit_minuit(fit_maps=fit_maps)
-        #ss.plot_overdensity(ylim=[0., 2.], 
-        #     title=f'{sample_name: {zmin:.3f} < {zname} < {zmax:.3f} fit in this bin')
+        ss.plot_overdensity(ylim=[0., 2.], 
+             title=f'{sample_name}: {zmin:.3f} < {zname} < {zmax:.3f} fit in this bin #{i}')
+        plt.savefig(f'plots/syst_{sample_root}_bin{i}.pdf')
 
         fit_pars.append(ss.best_pars)
         fit_errors.append(ss.errors)
@@ -249,15 +223,62 @@ def ra(x):
     return x-360*(x>300)
 
 
-#-- Read systematic maps
+
+
+
+indir = os.environ['LRG_DIR']+'/cats'
+cap = 'NGC'
+target = 'LRG'
+dat_file = indir+f'/eBOSS_{target}_full_{cap}_vtest.dat.fits'
+ran_file = indir+f'/eBOSS_{target}_full_{cap}_vtest.ran.fits'
+out_file = indir+f'/eBOSS_{target}_full_{cap}_vtest'
+sample_name = f'eBOSS {target} {cap} test DR16'
+sample_root = f'{target}_{cap}_vtest'
+
+#-- Read data and randoms
+print('Reading galaxies from ', dat_file)
+dat = Table.read(dat_file)
+print('Reading randoms  from ', ran_file)
+ran = Table.read(ran_file)
+
+#-- Cut for LRGs
+zmin = 0.6
+zmax = 1.0
+random_fraction = 1.0
+
+#-- Cut the sample 
+print('Cutting galaxies and randoms between zmin=%.3f and zmax=%.3f'%\
+     (zmin, zmax))
+
+#-- Select spectroscopic sample
+wd = ((dat['IMATCH']==1)|(dat['IMATCH']==2))&\
+     (dat['Z']>=zmin)&\
+     (dat['Z']<=zmax)&\
+     (dat['COMP_BOSS']>0.5)&\
+     (dat['sector_SSR']>0.5) 
+wr = (ran['Z']>=zmin)&\
+     (ran['Z']<=zmax)&\
+     (ran['COMP_BOSS']>0.5)&\
+     (ran['sector_SSR']>0.5)&\
+     (np.random.rand(len(ran))<random_fraction)
+
+
+#-- Defining RA, DEC and weights
+data_ra, data_dec = dat['RA'][wd], dat['DEC'][wd]
+rand_ra, rand_dec = ran['RA'][wr], ran['DEC'][wr]
+data_we = (dat['WEIGHT_CP']*dat['WEIGHT_FKP']/dat['sector_SSR'])[wd]
+rand_we = (ran['COMP_BOSS'])[wr]*(ran['WEIGHT_FKP'])[wr]
+
+
+#-- Read systematic values for data and randoms
 data_syst, rand_syst = read_systematic_maps(data_ra, data_dec, rand_ra, rand_dec)
 
 
 #-- Create fitter object
 s = systematic_fitter.Syst(data_we, rand_we)
 
-use_maps = ['STAR_DENSITY', 'EBV', 'PSF_Z', 'DEPTH_I', 'AIRMASS']
-#use_maps = ['STAR_DENSITY', 'EBV', 'PSF_Z', 'DEPTH_I', 'AIRMASS', 'W1_MED', 'W1_COVMED']
+use_maps = ['STAR_DENSITY', 'EBV', 'PSF_Z', 'DEPTH_I_MINUS_EBV', 'AIRMASS']
+#use_maps = ['EBV', 'PSF_I', 'SKY_I', 'DEPTH_I_MINUS_EBV', 'AIRMASS']
 
 fit_maps = ['STAR_DENSITY', 'EBV']
 
@@ -279,10 +300,12 @@ s.fit_minuit(fit_maps=fit_maps)
 
 #zname = 'Redshift'
 #data_z = dat['Z'][wd]
+zname = r'$g_{\rm fib2}$'
+data_z = flux_to_mag(dat['FIBER2FLUX'][:, 1].data[wd], 1).data
 zname = r'$i_{\rm fib2}$'
 data_z = flux_to_mag(dat['FIBER2FLUX'][:, 3].data[wd], 3).data
 
-nbinsz=15
+nbinsz=10
 chi2_thres=16.
 p_zcut = 1.
 fit_pars, fit_errors, chi2s, zcen, zbins = \
@@ -296,11 +319,10 @@ coeffs = plot_pars_vs_z(zcen, fit_pars, fit_errors, zname=zname,
 plt.savefig(f'plots/syst_{sample_root}_slopesperbin.pdf')
 
 
-
-#-- Make overdensity plots for full sample with new smooth per bin parameters
+#-- Get parameters for the smooth fit per bin
 pars_bin = get_pars_from_coeffs(coeffs, data_z[s.w_data])
-s.plot_overdensity(pars=[None, s.best_pars, pars_bin], 
-    ylim=[0.75, 1.25], title=f'{sample_name}')
+
+#-- Compare chi2 over the full sample
 print('\nFinal chi2 values over full sample')
 chi2_before = s.get_chi2()
 chi2_global = s.get_chi2(s.best_pars)
@@ -309,6 +331,11 @@ ndata = s.ndata
 print(f' - chi2 (no fit):          {chi2_before:.1f}/{ndata} = {chi2_before/ndata:.2f}')
 print(f' - chi2 (global fit):      {chi2_global:.1f}/{ndata} = {chi2_global/ndata:.2f}')
 print(f' - chi2 (smooth evol fit): {chi2_smooth:.1f}/{ndata} = {chi2_smooth/ndata:.2f}')
+
+#-- Make overdensity plots for full sample with new smooth per bin parameters
+s.plot_overdensity(pars=[None, s.best_pars, pars_bin], 
+    ylim=[0.75, 1.25], title=f'{sample_name}')
+plt.savefig(f'plots/syst_{sample_root}_global_binned.pdf')
 
 #-- Loop over bins again to obtain chi2 for the smooth model
 get_chi2_bin_smooth(s, zbins, data_z, coeffs, chi2s)
@@ -327,6 +354,7 @@ data_weightsys_smooth = 1/s.get_model(pars_smooth, data_syst)
 #-- Histograms of weights for different cases
 plt.figure()
 bins = np.linspace(np.min(data_weightsys_smooth), np.max(data_weightsys_smooth), 100)
+bins = np.linspace(0, 10, 200)
 _=plt.hist(data_weightsys_global, bins=bins, histtype='step', label='Global fit')
 _=plt.hist(data_weightsys_smooth, bins=bins, histtype='step', label='Bin fit smooth')
 wout = ((data_z<zbins[0])|(data_z>zbins[-1]))|(~s.w_data)
@@ -361,7 +389,7 @@ plot_weights_sky(data_ra, data_dec, data_weightsys_smooth, title=f'{sample_name}
 plt.savefig(f'plots/syst_{sample_root}_radec_binned.png')
  
 #-- Write systematic weights for global fit
-export=1
+export=0
 if export:
     dat_weight_systot = np.zeros(len(dat))
     ran_weight_systot = np.zeros(len(ran))
