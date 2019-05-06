@@ -389,3 +389,271 @@ class Syst:
 
         fout.close()
 
+
+
+def get_pix(nside, ra, dec, nest=0):
+    return hp.ang2pix(nside, np.radians(-dec+90), np.radians(ra), nest=nest)
+
+def flux_to_mag(flux, band, ebv=None):
+    ''' Converts SDSS fluxes to magnitudes, correcting for extinction optionally (EBV)'''
+    #-- coefs to convert from flux to magnitudes
+    b = np.array([1.4, 0.9, 1.2, 1.8, 7.4])[band]*1e-10
+    mag = -2.5/np.log(10)*(np.arcsinh((flux/1e9)/(2*b)) + np.log(b))
+    #-- extinction coefficients for SDSS u, g, r, i, and z bands
+    ext_coeff = np.array([4.239, 3.303, 2.285, 1.698, 1.263])[band]
+    if not ebv is None:
+        mag -= ext_coeff*ebv
+    return mag
+
+def read_systematic_maps(data_ra, data_dec, rand_ra, rand_dec):
+    
+    #-- Dictionaries containing all different systematic values
+    data_syst = {}
+    rand_syst = {}
+
+    #-- NHI map
+    nhi_file = os.environ['EBOSS_CLUSTERING_DIR']+'/etc/NHI_HPX.fits.gz'
+    nhi_file = 'toto'
+    if os.path.exists(nhi_file):
+        print('Reading maps from ', nhi_file)
+        nhi = Table.read(nhi_file)['NHI'].data
+        #-- rotate from galactic to equatorial coordinates
+        R = hp.Rotator(coord=['G', 'C'], inv=True)
+        theta, phi = hp.pix2ang(hp.get_nside(nhi), np.arange(nhi.size))
+        mtheta, mphi = R(theta, phi)
+        nhi_eq = hp.get_interp_val(nhi, mtheta, mphi)
+        data_nhi = nhi_eq[get_pix(hp.get_nside(nhi_eq), data_ra, data_dec)]
+        rand_nhi = nhi_eq[get_pix(hp.get_nside(nhi_eq), rand_ra, rand_dec)]
+        data_syst['log10(NHI)'] = np.log10(data_nhi)
+        rand_syst['log10(NHI)'] = np.log10(rand_nhi)
+
+    #-- SDSS systematics
+    print('Reading maps from ', nhi_file)
+    sdss_file = os.environ['EBOSS_CLUSTERING_DIR']+'/etc/SDSSimageprop_Nside512.fits'
+    if os.path.exists(sdss_file):
+        print('Reading maps from ', sdss_file)
+        sdss_syst = Table.read(sdss_file)
+        data_pix = get_pix(512, data_ra, data_dec) 
+        rand_pix = get_pix(512, rand_ra, rand_dec)
+        syst_names = ['EBV', 'AIRMASS',
+                      'SKY_G', 'SKY_I', 'SKY_Z', 
+                      'PSF_G', 'PSF_I', 'PSF_Z', 
+                      'DEPTH_G', 'DEPTH_I', 'DEPTH_Z']
+
+        for syst_name in syst_names:
+            if 1==1 and syst_name.startswith('DEPTH'):
+                if syst_name.endswith('G'):
+                    cam = 1
+                if syst_name.endswith('R'):
+                    cam = 2
+                if syst_name.endswith('I'):
+                    cam = 3
+                if syst_name.endswith('Z'):
+                    cam = 4
+                depth_minus_ebv = flux_to_mag(sdss_syst[syst_name], cam, ebv=sdss_syst['EBV']).data
+                data_syst[syst_name+'_MINUS_EBV'] = depth_minus_ebv[data_pix]
+                rand_syst[syst_name+'_MINUS_EBV'] = depth_minus_ebv[rand_pix]
+            else:
+                data_syst[syst_name] = sdss_syst[syst_name][data_pix].data
+                rand_syst[syst_name] = sdss_syst[syst_name][rand_pix].data
+
+    #-- Star density
+    star_file = os.environ['EBOSS_CLUSTERING_DIR']+'/etc/allstars17.519.9Healpixall256.dat'
+    if os.path.exists(star_file):
+        print('Reading maps from ', star_file)
+        star_density = np.loadtxt(star_file)
+        data_pix = get_pix(256, data_ra, data_dec, nest=1)
+        rand_pix = get_pix(256, rand_ra, rand_dec, nest=1)
+        data_syst['STAR_DENSITY'] = star_density[data_pix]
+        rand_syst['STAR_DENSITY'] = star_density[rand_pix]
+
+    return data_syst, rand_syst
+
+
+def fit_slopes_per_xbin(s, x_name, x_data, x_nbins=10, p=1., fit_maps=None, plot_delta=False,
+                save_plot_delta=False, sample_name=None, sample_root=None):
+    ''' From a systematic_fitter.Syst object, divide in subsamples based 
+        on the value of a variable called zname with values data_z 
+    '''
+
+    #-- define x_bins excluding p% of extreme values
+    x_bins = np.array([ np.percentile(x_data, p/2+(i*(100-p)/(x_nbins))) 
+                       for i in range(x_nbins+1)])
+    xcen = 0.5*(x_bins[1:]+x_bins[:-1]) 
+
+    #-- List of best fit parameters
+    chi2_list = []
+
+    #-- List of fitter objects
+    slist = []
+
+    #-- Loop over x_bins
+    for i in range(x_nbins):
+        xmin = x_bins[i]
+        xmax = x_bins[i+1]
+        wx = (x_data>=xmin) & (x_data<xmax)
+
+        print('===')
+        print(f'=== Getting subsample {i+1} of {x_nbins}, {xmin:.3f} < {x_name} < {xmax:.3f} ===')
+        print('===')
+        
+        ss = s.get_subsample(wx)
+        ss.fit_minuit(fit_maps=fit_maps)
+        if plot_delta:
+            ss.plot_overdensity(pars=[None, s.best_pars, ss.best_pars], ylim=[0., 2.], 
+                 title=f'{sample_name}: {xmin:.3f} < {x_name} < {xmax:.3f} fit in this bin #{i}')
+            if save_plot_delta:
+                plt.savefig(f'plots/syst_{sample_root}_bin{i}.pdf')
+
+        chi2_list.append({'before':ss.get_chi2(), 
+                     'global':ss.get_chi2(s.best_pars), 
+                     'bin':ss.get_chi2(ss.best_pars)})
+        slist.append(ss)
+
+    return x_bins, chi2_list, slist
+
+def fit_smooth_slopes_vs_x(x_bins, s_list, chi2_thres=16):
+    
+    xmin = x_bins[0]
+    xmax = x_bins[-1]
+    xcen = 0.5*(x_bins[:-1]+x_bins[1:])
+
+    par_names = s_list[0].par_names
+    npar = len(par_names)
+    
+    coeffs = {}
+    
+    print('\nFitting polynomials over slopes per bin')
+    for par_name in par_names:
+        y  = np.array([ss.best_pars[par_name] for ss in s_list])
+        dy = np.array([ss.errors[par_name]    for ss in s_list])
+
+        #-- Fitting slopes with polynomials with increasing order
+        for order in range(4):
+            #-- Fit poly
+            coeff = np.polyfit(xcen, y, order, w=1/dy)
+            #-- Compute model to get chi2
+            ymodel = np.polyval(coeff, xcen)
+            chi2 = np.sum((y-ymodel)**2/dy**2)
+            if par_name in coeffs:
+                #-- check if chis is smaller by at least chi2_thres units than lower order
+                coeff_before = coeffs[par_name]
+                ymodel_before = np.polyval(coeff_before, xcen)
+                chi2_before = np.sum((y-ymodel_before)**2/dy**2)
+                if (chi2 < chi2_before - chi2_thres):
+                    print('  ', par_name, ' fit with ', order, 'order poly with chi2= %.1f/%d = %.2f'%(chi2, y.size, chi2/y.size))
+                    coeffs[par_name] = coeff
+            else:
+                coeffs[par_name] = coeff
+
+    return coeffs
+
+
+def plot_slopes_vs_x(x_bins, s_list, x_name='Z', ylim=None, title=None,
+    global_pars=None, global_errors=None):
+    
+    xmin = x_bins[0]
+    xmax = x_bins[-1]
+    xcen = 0.5*(x_bins[:-1]+x_bins[1:])
+
+    par_names = s_list[0].par_names
+    npar = len(par_names)
+    
+    #-- some options for plotting
+    figsize = (15, 3) if npar > 2 else (6,3)
+    f, ax = plt.subplots(1, npar, sharey=False, figsize=figsize)
+    if npar == 1:
+        ax = [ax]
+    if npar > 1:
+        f.subplots_adjust(wspace=0.13, left=0.05, right=0.98,
+                          top=0.98, bottom=0.15)
+    if not ylim is None:
+        ax[0].set_ylim(ylim)
+
+    for par_name, axx in zip(par_names, ax):
+        y  = np.array([ss.best_pars[par_name] for ss in s_list])
+        dy = np.array([ss.errors[par_name]    for ss in s_list])
+        axx.errorbar(xcen, y, dy, fmt='o', ms=3)
+        #-- Fitting slopes with polynomials with increasing order
+        for order in range(3):
+            coeff = np.polyfit(xcen, y, order, w=1/dy)
+            #-- Compute model to get chi2
+            ymodel = np.polyval(coeff, xcen)
+            chi2 = np.sum((y-ymodel)**2/dy**2)
+            #-- Plot the model using the full range of x_data
+            x = np.linspace(xmin, xmax, 30)
+            ymodel = np.polyval(coeff, x)
+            axx.plot(x, ymodel, label=r'$n_{\rm poly}=%d, \chi^2 = %.1f$'%(order, chi2))
+        if not global_pars is None:
+            x = np.median(xcen)
+            y = global_pars[par_name]
+            dy = global_errors[par_name]
+            axx.errorbar(x, y, dy, fmt='*', ms=8, label='Global fit') 
+        axx.locator_params(axis='x', nbins=4, tight=True)
+        axx.legend(loc=0, fontsize=8)
+        axx.set_xlabel(x_name)
+        axx.set_title(par_name)
+
+    if title:
+        f.subplots_adjust(top=0.85)
+        plt.suptitle(title)
+
+
+def get_pars_from_coeffs(coeffs, x_values):
+
+    pars_bin = {}
+    for par_name in coeffs:
+        pars_bin[par_name] = np.polyval(coeffs[par_name], x_values)
+    return pars_bin
+
+def get_chi2_xbin_smooth(s, x_bins, x_data, coeffs, chi2s,
+    plot_delta=False, sample_name=None, x_name=None):
+    ''' Compute chi2 for each bin, this time with the smooth poly parameters
+    '''
+    for i in range(x_bins.size-1):
+        xmin = x_bins[i]
+        xmax = x_bins[i+1]
+        wdx = (x_data>=xmin) & (x_data<xmax) & (s.w_data)
+        ss = s.get_subsample(wdx)
+        pars_xbin = get_pars_from_coeffs(coeffs, x_data[wdx])
+        chi2s[i]['bin_smooth'] = ss.get_chi2(pars_xbin)
+        if plot_delta:
+            ss.plot_overdensity(pars=[None, s.best_pars, pars_xbin], ylim=[0, 2], 
+                title=f'{sample_name}: {xmin:.3f} < {x_name} < {xmax:.3f} fit in this bin')
+
+def plot_chi2_vs_x(x_bins, chi2s, x_name='redshift', title=None):
+   
+    xcen = 0.5*(x_bins[:-1]+x_bins[1:])
+    plt.figure()
+    for chi2name in chi2s[0]:
+        c2 = np.array([chi2[chi2name] for chi2 in chi2s])
+        plt.plot(xcen, c2, 'o-', label=chi2name)
+    plt.legend(loc=0)
+    plt.ylabel(r'$\chi^2$ per %s bin'%x_name)
+    plt.xlabel(x_name)
+    if title:
+        plt.title(title)
+
+def ra(x):
+    return x-360*(x>300)
+
+#-- Plot extreme values of weights in the sky
+def plot_weights_sky(data_ra, data_dec, data_weightsys, title=None):
+    plt.figure(figsize=(12, 7))
+    plt.scatter(ra(data_ra), data_dec, c=data_weightsys, vmin=0.5, vmax=1.5, lw=0, s=2, cmap='jet', label=None)
+    wext = (data_weightsys<0.5)|(data_weightsys > 2.)
+    if sum(wext)>0:
+        plt.plot(ra(data_ra[wext]), data_dec[wext], 'ko', ms=4, 
+            label=r'$w_{\rm sys} < 0.5 \ {\rm or} \ w_{\rm sys} > 2.$ : %d galaxies'%sum(wext))
+    plt.xlabel('RA [deg]')
+    plt.ylabel('DEC [deg]')
+    c = plt.colorbar()
+    c.set_label('WEIGHT_SYSTOT')
+    if title:
+        plt.title(title)
+    plt.legend(loc=0)
+    plt.tight_layout()
+
+
+
+
