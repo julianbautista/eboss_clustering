@@ -426,62 +426,60 @@ class Multipoles:
             self.mono[i] = par['x'][0]
             self.quad[i] = par['x'][1]
 
-    def plot(self, label=None, quad=0, hexa=0, errors=0, scale_r=2, \
-             alpha=1.0, color=None, lw=None):
+    def plot(self, fig=None, figsize=(12, 5), errors=0, scale_r=2, **kwargs):
 
         r = self.r
         y1 = self.mono  * (1 + r**scale_r) 
-        if quad:
-            y2 = self.quad * (1 + r**scale_r)
-        if hexa:
-            y3 = self.hexa * (1 + r**scale_r)
+        y2 = self.quad * (1 + r**scale_r)
+        y3 = self.hexa * (1 + r**scale_r)
+        y = [y1, y2, y3]
         if errors:
             dy1 = self.dmono * (1 + r**scale_r)
             dy2 = self.dquad * (1 + r**scale_r)
             dy3 = self.dhexa * (1 + r**scale_r)
-        
-        if quad:
-            plt.subplot(211)
-        if errors:
-            plt.errorbar(r, y1, dy1, fmt='o', label=label, \
-                       color=color, alpha=alpha)
-        else:
-            plt.plot(r, y1, label=label, color=color, alpha=alpha, lw=lw)
-        if scale_r == 0:
-            plt.ylabel(r'$\xi_0$')
-        else:
-            plt.ylabel(r'$r^{%d} \xi_0$ [$h^{%d}$ Mpc$^{%d}]$'%\
-                     (scale_r, -scale_r, scale_r))
-        plt.axhline(0, color='k', ls=':')
+            dy = [dy1, dy2, dy3]
 
-        if quad:
-            plt.subplot(212)
+        if fig is None:
+            fig, axes = plt.subplots(nrows=1, ncols=3, figsize=figsize)
+        else: 
+            axes = fig.get_axes()
+
+        for i in range(len(y)):
+            ax = axes[i]
             if errors:
-                plt.errorbar(r, y2, dy2, fmt='o', color=color, alpha=alpha)
+                ax.errorbar(r, y[i], dy[i], **kwargs)
             else:
-                plt.plot(r, y2, color=color, alpha=alpha, lw=lw)
+                ax.plot(r, y[i], **kwargs)
+ 
             if scale_r == 0:
-                plt.ylabel(r'$\xi_2$')
+                ax.set_ylabel(r'$\xi_%d$'%(i*2))
             else:
-                plt.ylabel(r'$r^{%d} \xi_2$ [$h^{%d}$ Mpc$^{%d}]$'%\
-                         (scale_r, -scale_r, scale_r))
-            plt.axhline(0, color='k', ls=':')
-        plt.xlabel(r'$r$ [$h^{-1}$ Mpc]')
+                ax.set_ylabel(r'$r^{%d} \xi_{%d} \ [h^{-%d} {\rm Mpc}^{%d}]$'%\
+                            (scale_r, 2*i, scale_r, scale_r))
+            ax.axhline(0, color='k', ls=':')
+            ax.set_xlabel(r'$r$ [$h^{-1}$ Mpc]')
         plt.tight_layout()
 
-    def plot_many(self, label=None, quad=0, errors=1, \
-                  scale_r=2, alpha=1.0, color=None):
+        return fig
+
+    def plot_many(self, fig=None, figsize=(12, 5), scale_r=2, **kwargs):
 
         if not hasattr(self, 'nmocks'):
             print('This is a single mock')
             return
+
+        if fig is None:
+            fig, axes = plt.subplots(nrows=1, ncols=3, figsize=figsize)
+        else: 
+            axes = fig.get_axes()
 
         cc = Multipoles()
         for i in range(self.nmocks):
             cc.r = self.r
             cc.mono = self.monos[i]
             cc.quad = self.quads[i]
-            cc.plot(quad=quad, errors=0, scale_r=scale_r, alpha=alpha, color=color)
+            cc.hexa = self.hexas[i]
+            cc.plot(fig=fig, errors=0, scale_r=scale_r, **kwargs)
 
     def export(self, fout):
         r = self.r

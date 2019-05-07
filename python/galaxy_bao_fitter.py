@@ -196,14 +196,14 @@ class Cosmo:
             with linear redshift-space distortions
             following Hamilton 1992
         '''
-        xibar   = np.array([ np.sum(xi[:i]*r[:i]**2) for i in range(r.size)])\
+        xib   = np.array([ np.sum(xi[:i]*r[:i]**2) for i in range(r.size)])\
                 * 3./r**3 * np.gradient(r)
-        #xibbar = np.array([ np.sum(xi[:i]*r[:i]**4) for i in range(r.size)])\
-                #* 5./r**5 * np.gradient(r)
+        xibb = np.array([ np.sum(xi[:i]*r[:i]**4) for i in range(r.size)])\
+                * 5./r**5 * np.gradient(r)
         xi0 = (1+2./3*f+1./5*f**2)*xi
-        xi2 = (4./3*f + 4./7*f**2)*(xi-xibar)
-        #xi4 = 8./35*f**2*(xi + 2.5*xibar - 3.5*xibarbar)
-        return xi0, xi2#, xi4
+        xi2 = (4./3*f + 4./7*f**2)*(xi-xib)
+        xi4 = 8./35*f**2*(xi + 2.5*xib - 3.5*xibb)
+        return xi0, xi2, xi4
 
     def set_2d_arrays(self):
 
@@ -339,7 +339,7 @@ class Cosmo:
 
         return rout, xi_mult
 
-    def get_multipoles_2d(self, rout, pars, ell_max=2, no_peak=0):
+    def get_multipoles_2d(self, rout, pars, ell_max=4, no_peak=0):
 
         pk_multipoles = self.get_2d_power_spectrum(pars, ell_max=ell_max,\
                                                     no_peak=no_peak)
@@ -357,22 +357,23 @@ class Cosmo:
                            'Sigma_rec', 'Sigma_s', 'Sigma_NL'],
              pars0 = {'ap':1.0, 'at': 1.0, 'bias':1.0, 'beta':0.6, \
                 'Sigma_par':10., 'Sigma_per':6., 'Sigma_s':4., 'Sigma_rec':0.},
-             rmin=1., rmax=200., scale_r=2):
+             rmin=1., rmax=200., scale_r=2, ell_max=4, figsize=(6, 8)):
 
         r = np.linspace(rmin, rmax, 2000)
         cosmo = Cosmo(z=z, name='planck')
-
+        nell = ell_max//2+1
         lss = ['-', '--', ':', '-.']
+
         if 'aiso' in pars_to_test:
-            plt.figure(figsize=(6, 5))
+            plt.figure(figsize=figsize)
             pars = pars0.copy()
             for i, ap in enumerate([0.95, 1.0, 1.05]):
                 pars['at'] = ap
                 pars['ap'] = ap
                 aiso = ap
-                xi_mult = cosmo.get_multipoles_2d(r, pars)
-                for j in range(2):
-                    plt.subplot(2, 1, j+1)
+                xi_mult = cosmo.get_multipoles_2d(r, pars, ell_max=ell_max)
+                for j in range(nell):
+                    plt.subplot(nell, 1, j+1)
                     plt.plot(r, xi_mult[j]*r**scale_r, 
                              ls=lss[i], color='k', lw=2, \
                              label=r'$\alpha_{\rm iso} = %.2f$'%aiso)
@@ -387,15 +388,15 @@ class Cosmo:
             plt.tight_layout()
 
         if 'epsilon' in pars_to_test: 
-            plt.figure(figsize=(6, 5))
+            plt.figure(figsize=figsize)
             pars = pars0.copy()
             for i, ap in enumerate([0.98, 1.0, 1.02]):
                 pars['at'] = 1./np.sqrt(ap)
                 pars['ap'] = ap
                 epsilon = (ap*np.sqrt(ap))**(1./3)-1
                 xi_mult = cosmo.get_multipoles_2d(r, pars)
-                for j in range(2):
-                    plt.subplot(2, 1, j+1)
+                for j in range(nell):
+                    plt.subplot(nell, 1, j+1)
                     plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
                            label=r'$\epsilon = %.2f$'%epsilon)
                     if i==0:
@@ -405,13 +406,13 @@ class Cosmo:
             plt.tight_layout()
 
         if 'bias' in pars_to_test:
-            plt.figure(figsize=(6,5))
+            plt.figure(figsize=figsize)
             pars = pars0.copy()
             for i, bias in enumerate([0.5, 1.0, 1.5]):
                 pars['bias'] = bias
                 xi_mult = cosmo.get_multipoles_2d(r, pars)
-                for j in range(2):
-                    plt.subplot(2, 1, j+1)
+                for j in range(nell):
+                    plt.subplot(nell, 1, j+1)
                     plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
                            label=r'$bias = %.2f$'%bias)
                     if i==0:
@@ -424,13 +425,13 @@ class Cosmo:
             plt.tight_layout()
 
         if 'f' in pars_to_test:
-            plt.figure(figsize=(6,5))
+            plt.figure(figsize=figsize)
             pars = pars0.copy()
             for i, f in enumerate([0.5, 0.7, 0.9]):
                 pars['beta'] = f/pars['bias']
                 xi_mult = cosmo.get_multipoles_2d(r, pars)
-                for j in range(2):
-                    plt.subplot(2, 1, j+1)
+                for j in range(nell):
+                    plt.subplot(nell, 1, j+1)
                     plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
                            label=r'$f = %.2f$'%f)
                     if i==0:
@@ -442,13 +443,13 @@ class Cosmo:
 
                 
         if 'Sigma_rec' in pars_to_test:
-            plt.figure(figsize=(6, 5))
+            plt.figure(figsize=figsize)
             pars = pars0.copy()
             for i, sigma_rec in enumerate([0., 5.0, 10.]):
                 pars['Sigma_rec'] = sigma_rec
                 xi_mult = cosmo.get_multipoles_2d(r, pars)
-                for j in range(2):
-                    plt.subplot(2, 1, j+1)
+                for j in range(nell):
+                    plt.subplot(nell, 1, j+1)
                     plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
                            label=r'$\Sigma_r = %.1f$'%sigma_rec)
                     if i==0:
@@ -459,13 +460,13 @@ class Cosmo:
             
 
         if 'Sigma_s' in pars_to_test: 
-            plt.figure(figsize=(6, 5))
+            plt.figure(figsize=figsize)
             pars = pars0.copy()
             for i, s in enumerate([0.1, 5., 10.]):
                 pars['Sigma_s'] = s
                 xi_mult = cosmo.get_multipoles_2d(r, pars)
-                for j in range(2):
-                    plt.subplot(2, 1, j+1)
+                for j in range(nell):
+                    plt.subplot(nell, 1, j+1)
                     plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
                             label=r'$\Sigma_s = %.1f$'%s)
                     if i==0:
@@ -475,14 +476,14 @@ class Cosmo:
             plt.tight_layout()
         
         if 'Sigma_NL' in pars_to_test:        
-            plt.figure(figsize=(6, 5))
+            plt.figure(figsize=figsize)
             pars = pars0.copy()
             for i, sig in enumerate([[6, 10], [8, 8], [0., 0]]):
                 pars['Sigma_per'] = sig[0]
                 pars['Sigma_par'] = sig[1]
                 xi_mult = cosmo.get_multipoles_2d(r, pars)
-                for j in range(2):
-                    plt.subplot(2, 1, j+1)
+                for j in range(nell):
+                    plt.subplot(nell, 1, j+1)
                     plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
                             label=r'$\Sigma_\perp = %.0f,\Sigma_\parallel = %.0f$'%\
                             (sig[0], sig[1]))
@@ -493,13 +494,13 @@ class Cosmo:
             plt.tight_layout()
 
         if 'beam' in pars_to_test:
-            plt.figure(figsize=(6, 5))
+            plt.figure(figsize=figsize)
             pars = pars0.copy()
             for i, beam in enumerate([0, 4.61, 6.34, 14.4]):
                 pars['beam'] = beam
                 xi_mult = cosmo.get_multipoles_2d(r, pars)
-                for j in range(2):
-                    plt.subplot(2, 1, j+1)
+                for j in range(nell):
+                    plt.subplot(nell, 1, j+1)
                     plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
                             label=r'$R_{\rm beam} = %.2f Mpc/h$'%beam)
                     if i==0:
@@ -509,13 +510,13 @@ class Cosmo:
             plt.tight_layout()
         
         if 'THI' in pars_to_test:
-            plt.figure(figsize=(6, 5))
+            plt.figure(figsize=figsize)
             pars = pars0.copy()
             for i, THI in enumerate([0.5, 1.0, 1.5]):
                 pars['THI'] = THI
                 xi_mult = cosmo.get_multipoles_2d(r, pars)
-                for j in range(2):
-                    plt.subplot(2, 1, j+1)
+                for j in range(nell):
+                    plt.subplot(nell, 1, j+1)
                     plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
                             label=r'$\bar{T}_{\rm HI} = %.2f [mK]$'%THI)
                     if i==0:
