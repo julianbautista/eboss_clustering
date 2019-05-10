@@ -10,34 +10,66 @@ from scipy.optimize import minimize
 
 class Corr:
 
-    def __init__(self, fin):
+    def __init__(self, fin, rebin_r=1, shift_r=0):
 
         ff = open(fin)
         self.wd, self.wd2, self.wr, self.wr2 = [float(s) for s in ff.readline().split()]
         self.header = ff.readline()[:-2]
 
-        self.rp, self.rt, self.cf, self.dcf, self.dd, self.dr, self.rr = \
+        self.mu2d, self.r2d, self.cf, self.dcf, self.dd, self.dr, self.rr = \
             np.loadtxt(fin, unpack=1, skiprows=2)
         
-        rper = np.unique(self.rt)
-        rpar = np.unique(self.rp)
-        nper = rper.size
-        npar = rpar.size
-        self.nper = nper
-        self.npar = npar
-        self.rper = rper
-        self.rpar = rpar
-        self.filename = fin
-        #self.wp = self.get_wp()
+        self.mu = np.unique(self.mu2d)
+        self.r = np.unique(self.r2d)
+        self.nmu = self.mu.size
+        self.nr = self.r.size
+        self.mu2d = self.shape2d(self.mu2d)
+        self.r2d = self.shape2d(self.r2d)
+        self.dd = self.shape2d(self.dd)
+        self.dr = self.shape2d(self.dr)
+        self.rr = self.shape2d(self.rr)
+        self.cf = self.shape2d(self.cf)
+        self.dcf = self.shape2d(self.dcf)
+        dd_norm = 0.5*(self.wd**2-self.wd2)
+        rr_norm = 0.5*(self.wr**2-self.wr2)
+        dr_norm = self.wd*self.wr
+
+        if rebin_r>1:
+            nr = (self.nr-rebin_r)//rebin_r
+            self.mu2d = np.mean(np.reshape(
+                            self.mu2d[shift_r:-rebin_r+shift_r],
+                                         (nr, rebin_r, -1)), axis=1)
+            self.r2d  = np.mean(np.reshape(
+                            self.r2d[shift_r:-rebin_r+shift_r], 
+                                         (nr, rebin_r, -1)), axis=1)
+            self.dd =   np.sum( np.reshape(
+                            self.dd[shift_r:-rebin_r+shift_r], 
+                                         (nr, rebin_r, -1)), axis=1) 
+            self.dr =   np.sum( np.reshape(
+                            self.dr[shift_r:-rebin_r+shift_r], 
+                                         (nr, rebin_r, -1)), axis=1) 
+            self.rr =   np.sum( np.reshape(
+                            self.rr[shift_r:-rebin_r+shift_r],
+                                         (nr, rebin_r, -1)), axis=1) 
+            self.r = np.unique(self.r2d)
+            self.mu = np.unique(self.mu2d)
+            self.nr = self.r.size
+            self.nmu = self.mu.size
+            self.cf = self.dd/self.rr*rr_norm/dd_norm \
+                      - 2.*self.dr/self.rr*rr_norm/dr_norm + 1.
+            self.dcf = (1+self.cf)*(1./np.sqrt(self.dd)+\
+                                    1./np.sqrt(self.dr)+\
+                                    1./np.sqrt(self.rr))
+
+        self.norm_dd = dd_norm
+        self.norm_dr = dr_norm
+        self.norm_rr = rr_norm
 
     def shape2d(self, x):
-        return np.reshape(x, (self.nper, self.npar))
+        return np.reshape(x, (self.nr, self.nmu))
 
     def transpose(self, x):
         return self.shape2d(x).T.ravel()
-
-    def get_wp(self):
-        return 2 * np.sum(self.shape2d(self.cf)*np.gradient(self.rpar), axis=1)
 
     def compute_cf(self):
        
@@ -60,42 +92,10 @@ class Corr:
         print(self.wd, self.wd2, self.wr, self.wr2, file=fout)
         print(self.header, file=fout)
         for i in range(self.cf.size):
-            print( self.rp[i], self.rt[i], self.cf[i], self.dcf[i], \
+            print( self.mu[i], self.r[i], self.cf[i], self.dcf[i], \
                    self.dd[i], self.dr[i], self.rr[i] , file=fout)
         fout.close()
 
-
-    @staticmethod
-    def coadd_old(c1, c2):
-        c = copy.deepcopy(c1)                
-
-        c.dd = c1.dd+c2.dd
-        c.dr = c1.dr+c2.dr
-        c.rr = c1.rr+c2.rr
-        c.wd = c1.wd+c2.wd
-        c.wd2= c1.wd2+c2.wd2
-        c.wr = c1.wr+c2.wr
-        c.wr2 = c1.wr2+c2.wr2
-        
-        #-- from CUTE
-        edd = np.zeros(c.dd.size)
-        edr = np.zeros(c.dd.size)
-        err = np.zeros(c.dd.size)
-        w = (c.dd>0)
-        edd[w] = 1./np.sqrt(c.dd[w])
-        edr[w] = 1./np.sqrt(c.dr[w])
-        err[w] = 1./np.sqrt(c.rr[w])
-        
-        dd_norm = 0.5*(c.wd**2-c.wd2)
-        rr_norm = 0.5*(c.wr**2-c.wr2)
-        dr_norm = c.wd*c.wr
-        ddn = c.dd/dd_norm
-        rrn = c.rr/rr_norm
-        drn = c.dr/dr_norm
-        c.cf = (ddn/rrn-2*drn/rrn+1)
-        c.dcf = (1+c.cf)*(edd+edr+err)
-
-        return c 
 
     @staticmethod
     def coadd(c1, c2):
@@ -135,17 +135,6 @@ class Corr:
         return c
 
     @staticmethod
-    def fill_rr(root, nmocks=1000):
-        
-        c0 = Corr(root%1+'.corr2drmu')
-       
-        for r in range(2, nmocks+1):
-            c = Corr(root%r+'.dddr')
-            c.rr = c0.rr
-            c.compute_cf()
-            c.export( (root%r)+'.corr2drmu')
-
-    @staticmethod
     def combine_mocks(root):
         allm = glob.glob(root)
         nmocks = len(allm)
@@ -164,7 +153,6 @@ class Corr:
         norm_rr = np.sum(np.array([0.5*(c.wr**2-c.wr2) for c in cs]))
         norm_dr = np.sum(np.array([c.wd*c.wr for c in cs]))
         cf = dds/rrs*norm_rr/norm_dd-2.*drs/rrs*norm_rr/norm_dr+1.
-        #dcf = (1+cf)*(1./np.sqrt(dds)+1./np.sqrt(drs)+1./np.sqrt(rrs))
         dcf = np.std(np.array([c.cf for c in cs]), axis=0)
 
         c = cs[0]
@@ -183,63 +171,73 @@ class Corr:
         return c
 
         
-
 class Wedges:
 
-    def __init__(self, fin=None, muranges = [[0., 0.5], [0.5, 0.8], [0.8, 1.]], rebin_r=8):
+    def __init__(self, fin=None,
+                       cute=0, rebin_r=1, shift_r=0,
+                       muranges = [[0., 0.5], [0.5, 0.8], [0.8, 1.]]): 
+
         if fin is not None:
-            self.wd, self.wd2, self.wr, self.wr2 = [float(s) for s in open(fin).readline().split()]
-            self.mu2d, self.r2d, self.cf, self.dcf, self.dd, self.dr, self.rr = \
-                 np.loadtxt(fin, unpack=1, skiprows=2)           
-
-            self.mu = np.unique(self.mu2d)
-            self.r = np.unique(self.r2d)
-            self.nmu = self.mu.size
-            self.nr = self.r.size
-            self.mu2d = self.shape2d(self.mu2d)
-            self.r2d = self.shape2d(self.r2d)
-            self.dd = self.shape2d(self.dd)
-            self.dr = self.shape2d(self.dr)
-            self.rr = self.shape2d(self.rr)
-            self.cf = self.shape2d(self.cf)
-            self.dcf = self.shape2d(self.dcf)
-            if rebin_r>1:
-                nr = self.nr//rebin_r
-                self.mu2d = np.mean(np.reshape(self.mu2d, (nr, rebin_r, -1)), axis=1)
-                self.r2d  = np.mean(np.reshape(self.r2d,  (nr, rebin_r, -1)), axis=1)
-                self.dd = np.sum(np.reshape(self.dd,  (nr, rebin_r, -1)), axis=1) 
-                self.dr = np.sum(np.reshape(self.dr,  (nr, rebin_r, -1)), axis=1) 
-                self.rr = np.sum(np.reshape(self.rr,  (nr, rebin_r, -1)), axis=1) 
-                self.r = np.unique(self.r2d)
-                self.mu = np.unique(self.mu2d)
-                self.nr = self.r.size
-                self.nmu = self.mu.size
-                dd_norm = 0.5*(self.wd**2-self.wd2)
-                rr_norm = 0.5*(self.wr**2-self.wr2)
-                dr_norm = self.wd*self.wr
-                self.cf = self.dd/self.rr*rr_norm/dd_norm \
-                          -2.*self.dr/self.rr*rr_norm/dr_norm + 1.
-                self.dcf = (1+self.cf)*(1./np.sqrt(self.dd) + \
-                                        1./np.sqrt(self.dr) + \
-                                        1./np.sqrt(self.rr))
-
-            self.compute_wedges(muranges=muranges)
+            if cute:
+                c = Corr(fin, rebin_r=rebin_r, shift_r=shift_r)
+                weds = self.compute_wedges(c.mu, c.cf, muranges=muranges)
+                r = c.r
+            else:
+                r, muranges, weds = self.read_wedges(fin) 
+           
+            self.r = r
+            self.weds = weds
+            self.muranges = muranges
             self.nmocks = 1
-            self.weds_many = None
 
-    def shape2d(self, x):
-        return np.reshape(x, (self.nr, self.nmu))
+    def read_wedges(self, fin):
+   
+        ff = open(fin)
+        #-- Reading header with mu ranges
+        mus = np.array([float(s) for s in ff.readline().split()[1:]]) 
+        muranges = [ [mus[i], mus[i+1]] for i in range(mus.size-1)] 
 
-    def compute_wedges(self, muranges=[[0., 0.5], [0.5, 0.8], [0.8, 1.]]):
+        data = np.loadtxt(fin, unpack=1)
+        r = data[0]
+        weds = data[1:]
+        return r, muranges, weds
+
+    def compute_wedges(self, mu, cf2d, muranges=[[0., 0.5], [0.5, 0.8], [0.8, 1.]]):
 
         weds = list()
         for murange in muranges:
-            w = (self.mu > murange[0])&(self.mu<=murange[1])
-            wed = np.mean(self.cf[:, w], axis=1)
+            w = (mu > murange[0])&(mu<=murange[1])
+            wed = np.mean(cf2d[:, w], axis=1)
             weds.append(wed)
 
-        self.muranges=muranges
-        self.weds = np.array(weds)
+        return np.array(weds)
+
+    def export(self, fout):
+        
+        fout = open(fout, 'w')
+        r = self.r
+        weds = self.weds
+        nweds = weds.shape[0]
+        muranges = np.unique(self.muranges)
+       
+        line = '#mus '
+        for i in range(nweds+1):
+            line+= f'{muranges[i]} '
+        print(line, file=fout)
+ 
+        line = '#r(Mpc/h) '
+        for i in range(nweds):
+            line+= f'w{i} '
+        print(line, file=fout)
+
+        for i in range(r.size):
+            line = f'{r[i]} '
+            for j in range(nweds):
+                line+= f'{weds[j, i]} '
+            print(line, file=fout)
+
+        fout.close()
+
 
     def plot(self, scale_r=2, n=-1, color=None, alpha=None, label=None):
 
@@ -305,76 +303,35 @@ class Wedges:
 
 class Multipoles:
     
-    def __init__(self, fin=None,  multipoles=0, rebin_r=1, shift_r=0):
+    def __init__(self, fin=None,  cute=0, rebin_r=1, shift_r=0):
 
         if fin:
-            if multipoles:
+            if cute: 
+                c = Corr(fin, rebin_r=rebin_r, shift_r=shift_r)
+                self.mono, self.quad, self.hexa = self.compute_multipoles(c.mu2d, c.cf)
+                self.r = c.r
+                self.cute = c
+            else:
                 self.read_multipoles(fin)
-                return
-            try:
-                self.mu2d, self.r2d, self.cf, self.dcf, self.dd, self.dr, self.rr = \
-                     np.loadtxt(fin, unpack=1)
-            except:
-                self.wd, self.wd2, self.wr, self.wr2 = \
-                     [float(s) for s in open(fin).readline().split()]
-                self.mu2d, self.r2d, self.cf, self.dcf, self.dd, self.dr, self.rr = \
-                     np.loadtxt(fin, unpack=1, skiprows=2)           
- 
-            self.mu = np.unique(self.mu2d)
-            self.r = np.unique(self.r2d)
-            self.nmu = self.mu.size
-            self.nr = self.r.size
-            self.mu2d = self.shape2d(self.mu2d)
-            self.r2d = self.shape2d(self.r2d)
-            self.dd = self.shape2d(self.dd)
-            self.dr = self.shape2d(self.dr)
-            self.rr = self.shape2d(self.rr)
-            self.cf = self.shape2d(self.cf)
-            self.dcf = self.shape2d(self.dcf)
-            dd_norm = 0.5*(self.wd**2-self.wd2)
-            rr_norm = 0.5*(self.wr**2-self.wr2)
-            dr_norm = self.wd*self.wr
-            if rebin_r>1:
-                nr = (self.nr-rebin_r)//rebin_r
-                self.mu2d = np.mean(np.reshape(
-                                self.mu2d[shift_r:-rebin_r+shift_r],
-                                             (nr, rebin_r, -1)), axis=1)
-                self.r2d  = np.mean(np.reshape(
-                                self.r2d[shift_r:-rebin_r+shift_r], 
-                                             (nr, rebin_r, -1)), axis=1)
-                self.dd =   np.sum( np.reshape(
-                                self.dd[shift_r:-rebin_r+shift_r], 
-                                             (nr, rebin_r, -1)), axis=1) 
-                self.dr =   np.sum( np.reshape(
-                                self.dr[shift_r:-rebin_r+shift_r], 
-                                             (nr, rebin_r, -1)), axis=1) 
-                self.rr =   np.sum( np.reshape(
-                                self.rr[shift_r:-rebin_r+shift_r],
-                                             (nr, rebin_r, -1)), axis=1) 
-                self.r = np.unique(self.r2d)
-                self.mu = np.unique(self.mu2d)
-                self.nr = self.r.size
-                self.nmu = self.mu.size
-                self.cf = self.dd/self.rr*rr_norm/dd_norm \
-                          - 2.*self.dr/self.rr*rr_norm/dr_norm + 1.
-                self.dcf = (1+self.cf)*(1./np.sqrt(self.dd)+\
-                                        1./np.sqrt(self.dr)+\
-                                        1./np.sqrt(self.rr))
-            self.norm_dd = dd_norm
-            self.norm_dr = dr_norm
-            self.norm_rr = rr_norm
-            self.compute_multipoles()
             self.nmocks = 1
-            self.monos = None
-            self.quads = None
-            self.hexas = None
 
     def read_multipoles(self, fin):
+
         data = np.loadtxt(fin)
-        if data.shape[1] == 2:
-            self.r, self.mono = data[:, 0], data[:, 1]
-        else:
-            self.r, self.mono, self.quad, self.hexa = data[:, 0], data[:, 1], data[:, 2], data[:, 3]
+        r = data[:, 0]
+        mono = data[:, 1]
+        try:
+            quad = data[:, 2]
+        except:
+            quad = None
+        try:
+            hexa = data[:, 3]
+        except:
+            hexa = None
+        self.r = r
+        self.mono = mono
+        self.quad = quad
+        self.hexa = hexa
 
     def read_cov(self, cov_file):
 
@@ -387,8 +344,15 @@ class Multipoles:
         ni = np.unique(i).size
         coss = np.reshape(coss, (ni, ni))
         dmono = np.sqrt(np.diag(coss)[:nr])
-        dquad = np.sqrt(np.diag(coss)[nr:(2*nr)])
-        dhexa = np.sqrt(np.diag(coss)[(2*nr):])
+        if ni>=2*nr:
+            dquad = np.sqrt(np.diag(coss)[nr:(2*nr)])
+        else:
+            dquad = None
+        if ni>=3*nr:
+            dhexa = np.sqrt(np.diag(coss)[(2*nr):])
+        else:
+            dhexa = None
+
         self.dmono = dmono
         self.dquad = dquad
         self.dhexa = dhexa
@@ -398,15 +362,14 @@ class Multipoles:
     def shape2d(self, x):
         return np.reshape(x, (self.nr, self.nmu))
 
-    def compute_multipoles(self):
-        
-        mu2d = self.mu2d
-        cf = self.cf
-        dcf = self.dcf 
-        dmu = np.gradient(self.mu)[0]
-        self.mono = np.sum(cf*(dcf>0)*dmu, axis=1)
-        self.quad = np.sum(cf*0.5*(3*mu2d**2-1)*(dcf>0)*dmu, axis=1)*5.
-        self.hexa = np.sum(cf*1/8*(35*mu2d**4-30*mu2d**2+3)*(dcf>0)*dmu, axis=1)*9.
+    def compute_multipoles(self, mu2d, cf2d):
+       
+        mu = np.unique(mu2d) 
+        dmu = np.gradient(mu)[0]
+        mono = np.sum(cf2d*dmu, axis=1)
+        quad = np.sum(cf2d*0.5*(3*mu2d**2-1)*dmu, axis=1)*5.
+        hexa = np.sum(cf2d*1/8*(35*mu2d**4-30*mu2d**2+3)*dmu, axis=1)*9.
+        return mono, quad, hexa
 
     def fit_multipoles(self, mu_min=0., mu_max=1.0):
 
@@ -428,19 +391,26 @@ class Multipoles:
 
     def plot(self, fig=None, figsize=(12, 5), errors=0, scale_r=2, **kwargs):
 
+        has_hexa = True if not self.hexa is None else False
+
         r = self.r
         y1 = self.mono  * (1 + r**scale_r) 
         y2 = self.quad * (1 + r**scale_r)
-        y3 = self.hexa * (1 + r**scale_r)
-        y = [y1, y2, y3]
+        y = [y1, y2]
+        if has_hexa:
+            y3 = self.hexa * (1 + r**scale_r)
+            y = [y1, y2, y3]
+
         if errors:
             dy1 = self.dmono * (1 + r**scale_r)
             dy2 = self.dquad * (1 + r**scale_r)
-            dy3 = self.dhexa * (1 + r**scale_r)
-            dy = [dy1, dy2, dy3]
+            dy = [dy1, dy2]
+            if has_hexa:
+                dy3 = self.dhexa * (1 + r**scale_r)
+                dy = [dy1, dy2, dy3] 
 
         if fig is None:
-            fig, axes = plt.subplots(nrows=1, ncols=3, figsize=figsize)
+            fig, axes = plt.subplots(nrows=1, ncols=len(y), figsize=figsize)
         else: 
             axes = fig.get_axes()
 
@@ -500,8 +470,7 @@ class Multipoles:
         fout.close()
 
     @staticmethod
-    def combine_mocks(root, multipoles=0, cov_with_quad=0, \
-            rebin_r=1, shift_r=0):
+    def combine_mocks(root, cute=0, rebin_r=1, shift_r=0):
 
         allm = glob.glob(root)
         nmocks = len(allm)
@@ -509,17 +478,20 @@ class Multipoles:
             print('No mocks found!')
             return
 
-        cs = [Multipoles(m, multipoles=multipoles, \
+        cs = [Multipoles(m, cute=cute, \
               rebin_r=rebin_r, shift_r=shift_r) for m in allm]
+
+        has_hexa = True if not cs[0].hexa is None else False
     
         monos = np.array([c.mono for c in cs])
         quads = np.array([c.quad for c in cs])
         hexas = np.array([c.hexa for c in cs])
-        
-        if cov_with_quad:
-            coss = np.cov(np.append(monos, quads, hexas, axis=1).T)
-        else:
-            coss = np.cov(monos.T)
+      
+        #-- covariance matrix 
+        x = np.append(monos, quads, axis=1)
+        if has_hexa:
+            x = np.append(x, hexas, axis=1) 
+        coss = np.cov(x.T)
         
         #-- correlation matrix
         corr = coss/np.sqrt(np.outer(np.diag(coss), np.diag(coss)))
@@ -527,51 +499,24 @@ class Multipoles:
         c = cs[0]
         c.mono = np.mean(monos, axis=0)
         c.quad = np.mean(quads, axis=0)
-        if cov_with_quad:
-            nbins = c.mono.size
-            c.dmono = np.sqrt(np.diag(coss)[:nbins])/np.sqrt(nmocks)
-            c.dquad = np.sqrt(np.diag(coss)[nbins:])/np.sqrt(nmocks)
+        if has_hexa:
+            c.hexa = np.mean(hexas, axis=0)
         else:
-            c.dmono = np.sqrt(np.diag(coss))/np.sqrt(nmocks)
-            c.dquad = np.std(quads, axis=0)/np.sqrt(nmocks)
+            c.hexa = None 
+
+        nbins = c.mono.size
+        c.dmono = np.sqrt(np.diag(coss)[:nbins])/np.sqrt(nmocks)
+        c.dquad = np.sqrt(np.diag(coss)[nbins:(2*nbins)])/np.sqrt(nmocks)
+        if has_hexa:
+            c.dhexa = np.sqrt(np.diag(coss)[(2*nbins):(3*nbins)])/np.sqrt(nmocks)
         c.coss = coss
         c.corr = corr
         c.nmocks = nmocks
         c.monos = monos
         c.quads = quads
+        c.hexas = hexas
 
         return c
 
-    @staticmethod
-    def plot_north_south_combined(root, multipoles=0, rebin_r=8):
-        mn = Multipoles(root%'North', \
-                multipoles=multipoles, rebin_r=rebin_r)
-        ms = Multipoles(root%'South', \
-                multipoles=multipoles, rebin_r=rebin_r)
-        m =  Multipoles(root%'Combined', \
-                multipoles=multipoles, rebin_r=rebin_r)
-        plt.figure()
-        mn.plot(quad=1, label='North')
-        ms.plot(quad=1, label='South')
-        m.plot(quad=1, label='Combined')
-        plt.subplot(211)
-        plt.legend(loc=3, numpoints=1, fontsize=12)
-        plt.draw()
-
-        
-    @staticmethod
-    def coadd(m1, m2):
-        m = copy.deepcopy(m1)
-
-        #-- ratio of number of galaxy pairs
-        f = m2.norm_dd/m1.norm_dd
-        
-        m.dd = m1.dd/m1.norm_dd + f*m2.dd/m2.norm_dd
-        m.dr = m1.dr/m1.norm_dr + f*m2.dr/m2.norm_dr
-        m.rr = m1.rr/m1.norm_rr + f*m2.rr/m2.norm_rr
-        m.cf = m.dd/m.rr - 2*m.dr/m.rr + 1.
-        m.dcf = m.cf*0+1
-        m.compute_multipoles()
-        return m
 
 
