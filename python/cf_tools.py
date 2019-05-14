@@ -10,7 +10,15 @@ from scipy.optimize import minimize
 
 class Corr:
 
-    def __init__(self, fin, rebin_r=1, shift_r=0):
+    def __init__(self, fin, rebin_r=1, shift_r=0, cute=1, ezmock=0):
+        if ezmock:
+            self.read_ezmock(fin, rebin_r=rebin_r, shift_r=shift_r)
+        elif cute:
+            self.read_cute(fin, rebin_r=rebin_r, shift_r=shift_r)
+        else:
+            print('Which format? CUTE or EZMOCK?')
+
+    def read_cute(self, fin, rebin_r=1, shift_r=0):
 
         ff = open(fin)
         self.wd, self.wd2, self.wr, self.wr2 = [float(s) for s in ff.readline().split()]
@@ -33,37 +41,67 @@ class Corr:
         dd_norm = 0.5*(self.wd**2-self.wd2)
         rr_norm = 0.5*(self.wr**2-self.wr2)
         dr_norm = self.wd*self.wr
-
-        if rebin_r>1:
-            nr = (self.nr-rebin_r)//rebin_r
-            self.mu2d = np.mean(np.reshape(
-                            self.mu2d[shift_r:-rebin_r+shift_r],
-                                         (nr, rebin_r, -1)), axis=1)
-            self.r2d  = np.mean(np.reshape(
-                            self.r2d[shift_r:-rebin_r+shift_r], 
-                                         (nr, rebin_r, -1)), axis=1)
-            self.dd =   np.sum( np.reshape(
-                            self.dd[shift_r:-rebin_r+shift_r], 
-                                         (nr, rebin_r, -1)), axis=1) 
-            self.dr =   np.sum( np.reshape(
-                            self.dr[shift_r:-rebin_r+shift_r], 
-                                         (nr, rebin_r, -1)), axis=1) 
-            self.rr =   np.sum( np.reshape(
-                            self.rr[shift_r:-rebin_r+shift_r],
-                                         (nr, rebin_r, -1)), axis=1) 
-            self.r = np.unique(self.r2d)
-            self.mu = np.unique(self.mu2d)
-            self.nr = self.r.size
-            self.nmu = self.mu.size
-            self.cf = self.dd/self.rr*rr_norm/dd_norm \
-                      - 2.*self.dr/self.rr*rr_norm/dr_norm + 1.
-            self.dcf = (1+self.cf)*(1./np.sqrt(self.dd)+\
-                                    1./np.sqrt(self.dr)+\
-                                    1./np.sqrt(self.rr))
-
         self.norm_dd = dd_norm
         self.norm_dr = dr_norm
         self.norm_rr = rr_norm
+
+        if rebin_r>1:
+            self.rebin(rebin_r=rebin_r, shift_r=shift_r)
+
+    def read_ezmock(self, root, rebin_r=1, shift_r=0):
+        mu0, mu1, s0, s1, dd, wdd = np.loadtxt(root+'.dd', unpack=1)
+        dr, wdr = np.loadtxt(root+'.dr', unpack=1, usecols=[4, 5])
+        rr, wrr = np.loadtxt(root[:-5]+'.rr', unpack=1, usecols=[4, 5])
+        self.mu2d = 0.5*(mu0+mu1)
+        self.r2d = 0.5*(s0+s1)
+        self.mu = np.unique(self.mu2d)
+        self.r = np.unique(self.r2d)  
+        self.nmu = self.mu.size
+        self.nr = self.r.size
+        self.cf = (wdd - 2*wdr + wrr)/wrr
+        self.dd = dd
+        self.dr = dr
+        self.rr = rr
+        self.mu2d = self.shape2d(self.mu2d)
+        self.r2d = self.shape2d(self.r2d)
+        self.dd = self.shape2d(self.dd)
+        self.dr = self.shape2d(self.dr)
+        self.rr = self.shape2d(self.rr)
+        self.cf = self.shape2d(self.cf)
+        self.norm_dd = np.mean((dd/wdd)[dd>0])
+        self.norm_dr = np.mean((dr/wdr)[dr>0])
+        self.norm_rr = np.mean((rr/wrr)[rr>0])
+       
+        if rebin_r>1:
+            self.rebin(rebin_r=rebin_r, shift_r=shift_r) 
+
+    def rebin(self, rebin_r=1, shift_r=0):
+
+        nr = (self.nr-rebin_r)//rebin_r
+        self.mu2d = np.mean(np.reshape(
+                        self.mu2d[shift_r:-rebin_r+shift_r],
+                                     (nr, rebin_r, -1)), axis=1)
+        self.r2d  = np.mean(np.reshape(
+                        self.r2d[shift_r:-rebin_r+shift_r], 
+                                     (nr, rebin_r, -1)), axis=1)
+        self.dd =   np.sum( np.reshape(
+                        self.dd[shift_r:-rebin_r+shift_r], 
+                                     (nr, rebin_r, -1)), axis=1) 
+        self.dr =   np.sum( np.reshape(
+                        self.dr[shift_r:-rebin_r+shift_r], 
+                                     (nr, rebin_r, -1)), axis=1) 
+        self.rr =   np.sum( np.reshape(
+                        self.rr[shift_r:-rebin_r+shift_r],
+                                     (nr, rebin_r, -1)), axis=1) 
+        self.r = np.unique(self.r2d)
+        self.mu = np.unique(self.mu2d)
+        self.nr = self.r.size
+        self.nmu = self.mu.size
+        self.cf = self.dd/self.rr*self.norm_rr/self.norm_dd \
+                  - 2.*self.dr/self.rr*self.norm_rr/self.norm_dr + 1.
+        self.dcf = (1+self.cf)*(1./np.sqrt(self.dd)+\
+                                1./np.sqrt(self.dr)+\
+                                1./np.sqrt(self.rr))
 
     def shape2d(self, x):
         return np.reshape(x, (self.nr, self.nmu))
@@ -371,6 +409,17 @@ class Multipoles:
         hexa = np.sum(cf2d*1/8*(35*mu2d**4-30*mu2d**2+3)*dmu, axis=1)*9.
         return mono, quad, hexa
 
+    def compute_multipoles_trapz(self, mu2d, cf2d):
+
+        mu = np.unique(mu2d)
+        dmu = np.gradient(mu)[0]
+        xi2 = cf2d * 2.5 * (3 * mu2d**2 - 1)
+        xi4 = cf2d * 1.125 * (35 * mu2d**4 - 30 * mu2d**2 + 3)
+        mono = np.trapz(cf2d, dx=dmu, axis=1)
+        quad = np.trapz(xi2, dx=dmu, axis=1)
+        hexa = np.trapz(xi4, dx=dmu, axis=1)
+        return mono, quad, hexa
+    
     def fit_multipoles(self, mu_min=0., mu_max=1.0):
 
         def chi2(p, mu, cf, mu_max):
@@ -472,7 +521,7 @@ class Multipoles:
     @staticmethod
     def combine_mocks(root, cute=0, rebin_r=1, shift_r=0):
 
-        allm = glob.glob(root)
+        allm = np.sort(glob.glob(root))
         nmocks = len(allm)
         if nmocks < 1:
             print('No mocks found!')

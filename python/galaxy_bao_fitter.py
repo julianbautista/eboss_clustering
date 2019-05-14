@@ -550,32 +550,39 @@ class Cosmo:
     
 class Data: 
 
-    def __init__(self, r, mono, coss, quad=None, rmin=40., rmax=180., \
+    def __init__(self, r, mono, coss, quad=None, hexa=None, rmin=40., rmax=180., \
                     nmocks=None):
 
-        if quad is not None:
-            r = np.append(r, r)
-            cf = np.append(mono, quad)
-            if cf.size != coss.shape[0]:
-                print('Problem: covariance shape is not compatible '+
-                      'with mono-quad', \
-                      cf.size, coss.shape[0])
-        else:
-            cf = mono
-            if coss.shape[0] == 2*r.size:
-                print('covariance matrix contains quad, removing it')
-                coss = coss[:r.size, :r.size]
+        cf = mono
+        rr = r
+        if not quad is None:
+            rr = np.append(rr, r)
+            cf = np.append(cf, quad)
+        if not hexa is None:
+            rr = np.append(rr, r)
+            cf = np.append(cf, hexa)
+   
+        
+        ncf = cf.size
+        ncov = coss.shape[0]
+        print(r.size, ncf, ncov)
+       
+        if ncf > ncov or ncov % mono.size > 0:
+            print('Problem: covariance shape is not compatible '+
+                  f'with correlation function. CF size: {ncf}  COV shape: {coss.shape}')
+            
+        if ncf < ncov:
+            print('Covariance matrix is larger than correlation function. Trying to cut')
+            coss = coss[:, :ncf]
+            coss = coss[:ncf, :]
 
-        w = (r>rmin) & (r<rmax)
-        r = r[w]
-        if quad is not None:
-            r = r[:r.size//2]
-
+        w = (rr>rmin) & (rr<rmax)
+        rr = rr[w]
         cf = cf[w]
         coss = coss[:, w]
         coss = coss[w, :]
         
-        self.r = r
+        self.r = np.unique(rr)
         self.cf = cf
         self.coss = coss
         self.icoss = np.linalg.inv(coss)
@@ -588,7 +595,8 @@ class Model:
     def __init__(self, name='challenge', z = 0, 
                  fit_broadband=True, bb_min=-2, bb_max=0, 
                  norm_pk=False, non_linear=False, no_peak=False,
-                 fit_iso=False, fit_multipoles=False, 
+                 fit_quad=False, fit_hexa=False,
+                 fit_iso=False, 
                  fit_beta=False, fit_cross=False, 
                  fit_amp=False, fit_beam=False):
 
@@ -640,52 +648,55 @@ class Model:
 
         if fit_broadband:
             for i, bb_power in enumerate(np.arange(bb_min, bb_max+1)):
-                if fit_multipoles:
-                    pars_names.append('bb_%d_mono'%i)
-                    pars['bb_%d_mono'%i] = 0.
+                pars_names.append('bb_%d_mono'%i)
+                pars['bb_%d_mono'%i] = 0.
+                if fit_quad:
                     pars_names.append('bb_%d_quad'%i)
                     pars['bb_%d_quad'%i] = 0.
-                else:
-                    pars_names.append('bb_%d'%i)
-                    pars['bb_%d'%i] = 0.
+                if fit_hexa:
+                    pars_names.append('bb_%d_hexa'%i)
+                    pars['bb_%d_hexa'%i] = 0.
 
         self.bb_min = bb_min
         self.bb_max = bb_max
         self.pars = pars
         self.pars_names = pars_names
         self.fit_broadband = fit_broadband
-        self.fit_multipoles = fit_multipoles
+        self.fit_quad = fit_quad
         self.no_peak = no_peak
         self.fit_cross = fit_cross
         self.fit_beam = fit_beam
         self.fit_beta = fit_beta
         self.fit_amp = fit_amp
+        self.fit_hexa = fit_hexa
         self.cosmo = cosmo
         
     def value(self, rout, pars):
 
-        ell_max = 2*self.fit_multipoles
-        cf_out = self.cosmo.get_multipoles_2d(rout,  pars, \
+        ell_max = 0 + 2*(self.fit_quad) + 2*(self.fit_hexa)
+        cf_out = self.cosmo.get_multipoles_2d(rout,  pars, 
                             ell_max=ell_max, no_peak=self.no_peak)
         return cf_out.ravel()
 
     def get_broadband(self, rout, pars):
-        
-        if self.fit_multipoles:
-            monobb = rout*0.
-            quadbb = rout*0.
-            for i in range(self.bb_max-self.bb_min+1):
-                power = self.bb_min + i
-                monobb += pars['bb_%d_mono'%i]*(rout**power)
+       
+        monobb = rout*0.
+        quadbb = rout*0.
+        hexabb = rout*0.
+        for i in range(self.bb_max-self.bb_min+1):
+            power = self.bb_min + i
+            monobb += pars['bb_%d_mono'%i]*(rout**power)
+            if self.fit_quad:
                 quadbb += pars['bb_%d_quad'%i]*(rout**power)
-            return np.append(monobb, quadbb)
-        else:
-            bb = rout*0.
-            for i in range(self.bb_max-self.bb_min+1):
-                power = self.bb_min + i
-                bb += pars['bb_%d'%i]*(rout**power)
-            return bb
+            if self.fit_hexa: 
+                hexabb += pars['bb_%d_hexa'%i]*(rout**power)
 
+        bb = monobb
+        if self.fit_quad:
+            bb = np.append(bb, quadbb)
+        if self.fit_hexa:
+            bb = np.append(bb, hexabb)
+        return bb
 
 class Chi2: 
 
@@ -714,27 +725,21 @@ class Chi2:
             best_pars[parname] = float(line[1])
             errors[parname] = float(line[2])
 
-        if '-nopeak' in fin:
-            no_peak = 1
+        fit_iso = True if 'aiso' in best_pars else False
+        no_peak = True if '-nopeak' in fin else False
+        fit_quad = True if '-quad' in fin else False
+        fit_hexa = True if '-hexa' in fin else False
+
+        if 'bb_0_mono' in best_pars.keys():
+            fit_broadband = True
         else:
-            no_peak=0
-
-        if 'aiso' in best_pars.keys():
-            fit_multipoles=0
-            fit_iso=1
-        else:
-            fit_multipoles=1
-            fit_iso=0
-
-        if 'bb_0' in best_pars.keys() or 'bb_0_mono' in best_pars.keys():
-            fit_broadband=1
-        else:
-            fit_broadband=0
+            fit_broadband = False
 
 
-        self.model=Model(fit_broadband=fit_broadband, fit_iso=fit_iso,\
-                    fit_multipoles=fit_multipoles, no_peak=no_peak, norm_pk=0,
-                    z=z)
+        self.model = Model(fit_broadband=fit_broadband, fit_iso=fit_iso,
+                           fit_quad=fit_quad, fit_hexa=fit_hexa, 
+                           no_peak=no_peak, norm_pk=0,
+                           z=z)
         self.model.cosmo.get_dist_rdrag()
         self.DM_rd = self.model.cosmo.DM_rd
         self.DH_rd = self.model.cosmo.DH_rd
@@ -760,9 +765,6 @@ class Chi2:
         pars = {}
         for i, name in enumerate(self.model.pars_names):
             pars[name] = p[i]
-        #    else:
-        #  if name.startswith('bb'): 
-        #       parsbb[name] = p[i]
 
         model = self.get_model(self.data.r, pars)
         residual = self.data.cf - model
@@ -824,7 +826,7 @@ class Chi2:
         print('chi2 = %.2f   ndata = %d   npars = %d   rchi2 = %.4f'%\
                 (self.chi2min, self.ndata, self.npars, self.rchi2min))
 
-    def plot_bestfit(self, model_only=0, scale_r=2, label=None):
+    def plot_bestfit(self, fig=None, model_only=0, scale_r=2, label=None, figsize=(12, 5)):
 
         data = self.data
         model = self.model
@@ -833,38 +835,31 @@ class Chi2:
         dcf = np.sqrt(np.diag(data.coss))
         cf_model = self.get_model(r, self.best_pars)
 
-        if model.fit_multipoles:
-            mono = cf[:r.size]
-            dmono = dcf[:r.size]
-            mono_model = cf_model[:r.size]
-            quad = cf[r.size:]
-            dquad = dcf[r.size:]
-            quad_model = cf_model[r.size:]
-            plt.subplot(211)
+        nmul = 1+1*model.fit_quad+1*model.fit_hexa
+
+        if fig is None:
+            fig, axes = plt.subplots(nrows=1, ncols=nmul, figsize=figsize)
+        else:
+            axes = fig.get_axes()
+
+        for i in range(nmul):
+            ax = axes[i]
+            y_data  =  cf[i*r.size:(i+1)*r.size]*r**scale_r
+            dy_data = dcf[i*r.size:(i+1)*r.size]*r**scale_r
+            y_model = cf_model[i*r.size:(i+1)*r.size]*r**scale_r
+           
             if not model_only:
-                plt.errorbar(r, mono*r**scale_r, dmono*r**scale_r, fmt='o')
-            plt.plot(r, mono_model*r**scale_r, label=label)
+                ax.errorbar(r, y_data, dy_data, fmt='o', ms=4)
+            ax.plot(r, y_model, label=label)
+
             if scale_r!=0:
-                plt.ylabel(r'$r^{%d} \xi_0$ [$h^{%d}$ Mpc$^{%d}]$'%\
-                         (scale_r, -scale_r, scale_r))
+                ax.set_ylabel(r'$r^{%d} \xi_{%d}$ [$h^{%d}$ Mpc$^{%d}]$'%\
+                              (scale_r, i*2, -scale_r, scale_r))
             else:
-                plt.ylabel(r'$\xi_0$', fontsize=16)
-            plt.subplot(212)
-            if not model_only:
-                plt.errorbar(r, quad*r**scale_r, dquad*r**scale_r, fmt='o')
-            plt.plot(r, quad_model*r**scale_r)
-            if scale_r!=0:
-                plt.ylabel(r'$r^{%d} \xi_2$ [$h^{%d}$ Mpc$^{%d}]$'%\
-                        (scale_r, -scale_r, scale_r))
-            else:
-                plt.ylabel(r'$\xi_2$', fontsize=16)
-        else: 
-            if not model_only:
-                plt.errorbar(r, cf*r**scale_r, dcf*r**scale_r, fmt='o')
-            plt.plot(r, cf_model*r**scale_r, label=label)
-            plt.ylabel(r'$r^{%d} \xi_0$ [$h^{%d}$ Mpc$^{%d}]$'%\
-                     (scale_r, -scale_r, scale_r))
-        plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$', fontsize=16)
+                ax.set_ylabel(r'$\xi_{%d}$'%(i*2), fontsize=16)
+            ax.set_xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$', fontsize=16)
+
+        return fig
 
     def scan(self, par_name='alpha', par_min=0.8, par_max=1.2, par_nsteps=400):
 

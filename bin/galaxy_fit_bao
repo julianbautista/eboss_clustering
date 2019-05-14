@@ -18,7 +18,7 @@ parser.add_argument('--nmocks',
                     type=int)
 parser.add_argument('--z', help='Redshift of power spectrum', \
                     type=float, default=0.71)
-parser.add_argument('--not_norm_pk', 
+parser.add_argument('--norm_pk', 
                     help='Do NOT normalize the power spectrum to integral one',
                     action='store_true', default=False)
 parser.add_argument('--non_linear_pk', 
@@ -31,7 +31,7 @@ parser.add_argument('--rmin', help='Minimum separation',
                     type=float, default=30.)
 parser.add_argument('--rmax', help='Maximum separation', 
                     type=float, default=180.)
-parser.add_argument('--fit_bb', help='Use broadband', \
+parser.add_argument('--fit_broadband', help='Use broadband', \
                     action='store_true', default=False)
 parser.add_argument('--bb_min', help='Minimum exponent for broadband', \
                     type=int, default=-2)
@@ -40,6 +40,8 @@ parser.add_argument('--bb_max', help='Maximum exponent for broadband', \
 parser.add_argument('--fit_nopeak', help='Perform a fit without bao peak', \
                     action='store_true', default=False)
 parser.add_argument('--fit_quad', help='Use quadrupole', \
+                    action='store_true', default=False)
+parser.add_argument('--fit_hexa', help='Use hexadecapole', \
                     action='store_true', default=False)
 parser.add_argument('--fit_iso', help='Perform isotropic fit', \
                     action='store_true', default=False)
@@ -95,40 +97,30 @@ for arg in argnames:
     print(arg, ':', args.__dict__[arg])
 
 
-z=args.z
-rmin=args.rmin
-rmax=args.rmax
-rebin_r=args.rebin_r
-shift_r=args.shift_r
-fit_nopeak=args.fit_nopeak
-fit_broadband=args.fit_bb
-fit_quad=args.fit_quad
-fit_iso=args.fit_iso
-fit_beta=args.fit_beta
-plotit=args.plotit
-nmocks=args.nmocks
-fixes=args.fixes
-limits=args.limits
-priors=args.priors
-scale_cov=args.scale_cov
-norm_pk = (args.not_norm_pk  == False)
 
-
-
-
-m = Multipoles(args.input, rebin_r=rebin_r, shift_r=shift_r, \
-               multipoles=(args.cute==False))
+##-- Read input multipoles 
+m = Multipoles(args.input, cute=args.cute, rebin_r=args.rebin_r, shift_r=args.shift_r)
+if not args.fit_quad:
+    m.quad= None
+if not args.fit_hexa:
+    m.hexa = None
+#-- Read covariance matrix
 m.read_cov(args.cov)
-m.coss *= scale_cov
+m.coss *= args.scale_cov
 
 
+#-- Define output name
 output = args.output+\
-        '-rmin%.1f-rmax%.1f'%(rmin, rmax)+\
-        '-nobb'*(1-fit_broadband)+ \
-        '-monoonly'*(1-fit_quad)+\
-        '-iso'*(fit_iso)
+        '-rmin%.1f-rmax%.1f'%(args.rmin, args.rmax)+\
+        '-bb'*(args.fit_broadband)+ \
+        '-quad'*(args.fit_quad)+\
+        '-hexa'*(args.fit_hexa)+\
+        '-iso'*(args.fit_iso)
 output_base = os.path.basename(output)
 
+
+#-- Define fixed parameters, priors and limits
+fixes=args.fixes
 if fixes:
     fixes_dict = {}
     for i in range(0, len(fixes), 2):
@@ -137,6 +129,7 @@ if fixes:
 else:
     fixes={}
 
+priors=args.priors
 if priors:
     priors_dict = {}
     for i in range(0, len(priors), 3):
@@ -145,6 +138,7 @@ if priors:
 else:
     priors={}
 
+limits=args.limits
 if limits:
     limits_dict = {}
     for i in range(0, len(limits), 3):
@@ -153,45 +147,50 @@ if limits:
 else:
     limits={}
 
-if fit_quad:
-    quad = m.quad
-else:
-    quad = None
-
-data = Data(m.r, m.mono, m.coss,  quad=quad, 
-            nmocks=nmocks, rmax=rmax, rmin=rmin)
 
 
-model = Model(fit_broadband=fit_broadband, 
-              fit_multipoles=fit_quad, 
+
+#-- Define data, cutting over rmin,rmax 
+data = Data(m.r, m.mono, m.coss, 
+            quad=m.quad, hexa=m.hexa, 
+            nmocks=args.nmocks, rmax=args.rmax, rmin=args.rmin)
+
+
+
+#-- Initiate model with BAO peak
+model = Model(fit_broadband=args.fit_broadband, 
+              fit_quad=args.fit_quad, 
+              fit_hexa=args.fit_hexa,
               name=args.cosmology, 
-              norm_pk=norm_pk, 
+              norm_pk=args.norm_pk, 
               non_linear=args.non_linear_pk, 
-              z=z, fit_iso=fit_iso, no_peak=0, 
+              z=args.z, fit_iso=args.fit_iso, no_peak=0, 
               fit_cross=args.fit_cross, 
               fit_beam=args.fit_beam,
               fit_amp=args.fit_amp,
               fit_beta=args.fit_beta,
               bb_min=args.bb_min, bb_max=args.bb_max)
 
+#-- Perform fit and export
 chi2 = Chi2(data=data, model=model)
 chi2.fit(fixes=fixes, priors=priors, limits=limits) 
 chi2.export(output+'.pars')
 
 
-
-if fit_nopeak:
-    model_nopeak = Model(fit_broadband=fit_broadband, 
-                         fit_multipoles=fit_quad,
-                         name=args.cosmology, norm_pk=norm_pk, 
+#-- Initiate and perform fit without BAO peak
+if args.fit_nopeak:
+    model_nopeak = Model(fit_broadband=args.fit_broadband, 
+                         fit_quad=args.fit_quad,
+                         fit_hexa=args.fit_hexa,
+                         name=args.cosmology, norm_pk=args.norm_pk, 
                          non_linear=args.non_linear_pk, 
-                         z=z, fit_iso=fit_iso, fit_beta=fit_beta, no_peak=1)  
+                         z=args.z, fit_iso=args.fit_iso, fit_beta=args.fit_beta, no_peak=1)  
     chi2_nopeak = Chi2(data=data, model=model_nopeak)
     chi2_nopeak.fit(fixes=fixes, priors=priors, limits=limits)
     chi2_nopeak.export(output+'-nopeak.pars')
 
 
-#-- minos (assymetric error bars)
+#-- Get assymetric error bars
 if args.minos:
     for par in args.minos:
         print('Performing minos for', par)
@@ -202,7 +201,7 @@ if args.minos:
         fout.close()
 
 
-#-- doing chi2 scans
+#-- Perform one dimensional scans of chi2
 if args.scan:
     for i in range(0, len(args.scan), 4):
         par = args.scan[i]
@@ -220,30 +219,8 @@ if args.scan:
         fout.close()
         print('chi2 scan exported to:', output+'.%s.scan'%par)
 
-if args.scan2d:
-
-    for i in range(0, len(args.scan2d), 8):
-        par_names = [args.scan2d[i], args.scan2d[i+4]]
-        low = [float(args.scan2d[i+1]), float(args.scan2d[i+5])]
-        upp = [float(args.scan2d[i+2]), float(args.scan2d[i+6])]
-        nbin =  [int(args.scan2d[i+3]), int(args.scan2d[i+7])]
-        par_scan0, par_scan1, chi2_scan = \
-            chi2.scan_2d(par_names=par_names, par_nsteps=nbin, par_min=low, par_max=upp)
-
-        #-- chi2 scans
-        filename = output+'.%s.%s.scan2d'%(par_names[0], par_names[1])
-        fout = open(filename, 'w')
-        print( chi2.best_pars[par_names[0]], \
-               chi2.best_pars[par_names[1]], \
-               chi2.chi2min, file=fout)
-        for i in range(par_scan0.size):
-            for j in range(par_scan1.size):
-                print(par_scan0[i], par_scan1[j], chi2_scan[i, j], file=fout)
-        fout.close()
-        print('chi2 scan exported to:', filename)
-
+#-- Perform one dimensional scans of chi2 for no peak model
 if args.scan_nopeak:
-
     for i in range(0, len(args.scan_nopeak), 4):
         par = args.scan_nopeak[i]
         low = float(args.scan_nopeak[i+1])
@@ -260,14 +237,33 @@ if args.scan_nopeak:
         fout.close()
 
 
-if plotit:
-    plt.figure()
-    chi2.plot_bestfit(label=r'$\chi^2 = %.2f$'%chi2.chi2min, scale_r=args.scale_r_plot)
-    if fit_nopeak:
-        chi2_nopeak.plot_bestfit(model_only=1, scale_r=args.scale_r_plot, \
+#-- Perform two dimensional scans of chi2
+if args.scan2d:
+    for i in range(0, len(args.scan2d), 8):
+        par_names = [args.scan2d[i], args.scan2d[i+4]]
+        low = [float(args.scan2d[i+1]), float(args.scan2d[i+5])]
+        upp = [float(args.scan2d[i+2]), float(args.scan2d[i+6])]
+        nbin =  [int(args.scan2d[i+3]), int(args.scan2d[i+7])]
+        par_scan0, par_scan1, chi2_scan = \
+            chi2.scan_2d(par_names=par_names, par_nsteps=nbin, par_min=low, par_max=upp)
+
+        filename = output+'.%s.%s.scan2d'%(par_names[0], par_names[1])
+        fout = open(filename, 'w')
+        print( chi2.best_pars[par_names[0]], \
+               chi2.best_pars[par_names[1]], \
+               chi2.chi2min, file=fout)
+        for i in range(par_scan0.size):
+            for j in range(par_scan1.size):
+                print(par_scan0[i], par_scan1[j], chi2_scan[i, j], file=fout)
+        fout.close()
+        print('chi2 scan exported to:', filename)
+
+
+if args.plotit:
+    fig = chi2.plot_bestfit(label=r'$\chi^2 = %.2f$'%chi2.chi2min, scale_r=args.scale_r_plot)
+    if args.fit_nopeak:
+        fig = chi2_nopeak.plot_bestfit(fig=fig, model_only=1, scale_r=args.scale_r_plot, \
                 label=r'$\chi^2_{\rm no \ peak} = %.2f$'%chi2_nopeak.chi2min)
-    if fit_quad:
-        plt.subplot(211)
     plt.legend(loc=0)
     plt.tight_layout()
     if args.save_plot:
