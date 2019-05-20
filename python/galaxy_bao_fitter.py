@@ -4,7 +4,6 @@ import numpy as np
 import pylab as plt
 import fftlog
 import iminuit
-import iminuit.frontends
 import scipy.interpolate 
 from scipy.ndimage import gaussian_filter1d
 
@@ -310,7 +309,7 @@ class Cosmo:
             pk_mult[ell//2] = (2.*ell+1.) * np.sum( pk2d_out * \
                              self.Legendre(ell, mu)[:, None] * dmu[:, None], axis=0)  
 
-        self.pars = pars.copy()
+        #self.pars = pars.copy()
         self.pk_mult = pk_mult
 
         return pk_mult
@@ -802,11 +801,11 @@ class Chi2:
         
         self.init_pars = init_pars
 
-        mig = iminuit.Minuit(self, throw_nan=False, \
-                             forced_parameters=self.model.pars_names, \
-                             print_level=1, errordef=1, \
-                             frontend=iminuit.frontends.ConsoleFrontend(), \
+        mig = iminuit.Minuit(self, throw_nan=False, 
+                             forced_parameters=self.model.pars_names, 
+                             print_level=1, errordef=1, 
                              **init_pars)
+                             #frontend=iminuit.frontends.ConsoleFrontend(), \
         mig.tol = 10.0 
         imin = mig.migrad()
         #mig.hesse()

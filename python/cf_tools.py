@@ -505,7 +505,12 @@ class Multipoles:
         fout = open(fout, 'w')
         print( '#r(Mpc/h) mono quad hexa', file=fout)
         for i in range(r.size):
-            print(r[i], self.mono[i], self.quad[i], self.hexa[i], file=fout)
+            line = f'{r[i]} {self.mono[i]}'
+            if not self.quad is None:
+                line+= f' {self.quad[i]}'
+            if not self.hexa is None:
+                line+= f' {self.hexa[i]}'
+            print(line, file=fout)
         fout.close()
     
     def export_cov(self, fout):
