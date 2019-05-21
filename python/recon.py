@@ -1,9 +1,7 @@
 from __future__ import print_function
 import numpy as np
 import os
-import json
-#from scipy.ndimage.filters import gaussian_filter
-from scipy.fftpack import fftn, ifftn, fftshift, fftfreq
+from scipy.fftpack import fftfreq
 from ebosscat import Cosmo
 import pyfftw
 import fastmodules
