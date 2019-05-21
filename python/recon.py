@@ -40,6 +40,9 @@ class Recon:
                  rand_ra, rand_dec, rand_z, rand_we, \
                  bias=2.3, f=0.817, smooth=15., nbins=256, \
                  padding=200., opt_box=1, nthreads=1):
+        ''' RA, DEC, Z and WE arrays should all be in np.float64 format
+            for fastmodules to work 
+        '''
 
         beta = f/bias
 
@@ -340,48 +343,13 @@ class Recon:
         sx = dat.newx-dat.x
         sy = dat.newy-dat.y
         sz = dat.newz-dat.z
+        axis = ['x', 'y', 'z']
         print('Shifts stats:')
-        for s in [sx, sy, sz]:
-            print(np.std(s), np.percentile(s, 16), np.percentile(s, 84), \
-                    np.min(s), np.max(s))
+        print('RMS   16th-perc  84th-perc  min  max')
+        for ax, s in zip(axis, [sx, sy, sz]):
+            print(ax+' %.3f %.3f %.3f %.3f %.3f'%\
+                  (np.std(s), np.percentile(s, 16), np.percentile(s, 84), np.min(s), np.max(s)))
 
-
-    def allocate_gal_cic(self, c):
-        xmin=self.xmin
-        ymin=self.ymin
-        zmin=self.zmin
-        binsize=self.binsize
-        nbins=self.nbins
-
-        xpos = (c.newx-xmin)/binsize
-        ypos = (c.newy-ymin)/binsize
-        zpos = (c.newz-zmin)/binsize
-
-        i = xpos.astype(int)
-        j = ypos.astype(int)
-        k = zpos.astype(int)
-
-        ddx = xpos-i
-        ddy = ypos-j
-        ddz = zpos-k
-
-        delta = np.zeros((nbins, nbins, nbins))
-        edges = [np.linspace(0, nbins, nbins+1), \
-                 np.linspace(0, nbins, nbins+1), \
-                 np.linspace(0, nbins, nbins+1)]
-
-        for ii in range(2):
-            for jj in range(2):
-                for kk in range(2):
-                    pos = np.array([i+ii, j+jj, k+kk]).transpose()
-                    weight = ( ((1-ddx)+ii*(-1+2*ddx))*\
-                               ((1-ddy)+jj*(-1+2*ddy))*\
-                               ((1-ddz)+kk*(-1+2*ddz)) ) *c.we
-                    delta_t, edges = np.histogramdd(pos, \
-                                     bins=edges, weights=weight) 
-                    delta+=delta_t
-
-        return delta
 
     def get_shift(self, x, y, z, f_x, f_y, f_z):
 
