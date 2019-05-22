@@ -129,9 +129,10 @@ class Corr:
         fout = open(fout, 'w')
         print(self.wd, self.wd2, self.wr, self.wr2, file=fout)
         print(self.header, file=fout)
-        for i in range(self.cf.size):
-            print( self.mu[i], self.r[i], self.cf[i], self.dcf[i], \
-                   self.dd[i], self.dr[i], self.rr[i] , file=fout)
+        for i in range(self.nr):
+            for j in range(self.nmu):
+                print( self.mu[j], self.r[i], self.cf[i, j], self.dcf[i, j], \
+                       self.dd[i, j], self.dr[i, j], self.rr[i, j] , file=fout)
         fout.close()
 
 
