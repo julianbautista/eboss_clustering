@@ -12,7 +12,7 @@ parser.add_argument('--shift_r', help='Starts rebinning from bin number shift_r'
                     type=int, default=0)
 args = parser.parse_args()
 
-m = Multipoles(args.input, rebin_r=args.rebin_r, shift_r=args.shift_r, multipoles=0)
+m = Multipoles(args.input, rebin_r=args.rebin_r, shift_r=args.shift_r, cute=1)
 m.export(args.output)
 
 

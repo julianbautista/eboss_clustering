@@ -842,7 +842,10 @@ class Chi2:
             axes = fig.get_axes()
 
         for i in range(nmul):
-            ax = axes[i]
+            try:
+                ax = axes[i]
+            except:
+                ax = axes
             y_data  =  cf[i*r.size:(i+1)*r.size]*r**scale_r
             dy_data = dcf[i*r.size:(i+1)*r.size]*r**scale_r
             y_model = cf_model[i*r.size:(i+1)*r.size]*r**scale_r
