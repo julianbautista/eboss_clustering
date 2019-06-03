@@ -887,7 +887,8 @@ class Chi2:
         r = data.r
         cf = data.cf
         dcf = np.sqrt(np.diag(data.coss))
-        cf_model = self.get_model(r, self.best_pars)
+        r_model = np.linspace(r.min(), r.max(), 200)
+        cf_model = self.get_model(r_model, self.best_pars)
 
         nmul = 1+1*model.fit_quad+1*model.fit_hexa
 
@@ -901,13 +902,16 @@ class Chi2:
                 ax = axes[i]
             except:
                 ax = axes
-            y_data  =  cf[i*r.size:(i+1)*r.size]*r**scale_r
-            dy_data = dcf[i*r.size:(i+1)*r.size]*r**scale_r
-            y_model = cf_model[i*r.size:(i+1)*r.size]*r**scale_r
-           
+            y_data  =  cf[i*r.size:(i+1)*r.size]
+            dy_data = dcf[i*r.size:(i+1)*r.size]
+            y_model = cf_model[i*r_model.size:(i+1)*r_model.size]
+            y_data *= r**scale_r
+            dy_data *= r**scale_r
+            y_model *= r_model**scale_r 
+
             if not model_only:
                 ax.errorbar(r, y_data, dy_data, fmt='o', ms=4)
-            ax.plot(r, y_model, label=label)
+            ax.plot(r_model, y_model, label=label)
 
             if scale_r!=0:
                 ax.set_ylabel(r'$r^{%d} \xi_{%d}$ [$h^{%d}$ Mpc$^{%d}]$'%\
