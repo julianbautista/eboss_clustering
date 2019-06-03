@@ -5,15 +5,17 @@ import pylab as plt
 import fftlog
 import iminuit
 import scipy.interpolate 
+from scipy.optimize import curve_fit
 from scipy.ndimage import gaussian_filter1d
 
 class Cosmo:
 
-    def __init__(self, z=0.0, name='challenge', norm_pk=0, non_linear=0):
+    def __init__(self, z=0.0, name='challenge', norm_pk=False, non_linear=False):
         self.get_matter_power_spectrum(z=z, name=name, norm_pk=norm_pk, 
                                        non_linear=non_linear)
         self.get_correlation_function(update=1)
-        self.get_sideband()
+        #self.get_sideband()
+        self.get_sideband_scipy()
         self.get_sideband_power()
         self.set_2d_arrays()
 
@@ -126,12 +128,12 @@ class Cosmo:
 
         return rout, xiout
 
-    def get_sideband(self, r=None, xi=None, \
-                     fit_range=[[50., 80.], [150., 190.]], poly_order=4):
+    def get_sideband(self, 
+                     fit_range=[[50., 80.], [160., 190.]], 
+                     poly_order=4):
 
-        if r is None or xi is None:
-            r = self.r
-            xi = self.xi
+        r = self.r
+        xi = self.xi
 
         peak_range = [fit_range[0][1], fit_range[1][0]]
 
@@ -146,10 +148,63 @@ class Cosmo:
         w_peak = (r>peak_range[0])&(r<peak_range[1])
         xi_sideband[w_peak] = np.polyval(coeff, r[w_peak])/r[w_peak]**3
 
+        self.xi_model = np.polyval(coeff, r)/r**3
         self.xi_sideband = xi_sideband
         self.peak_range = peak_range
+        self.fit_range = fit_range
 
         return xi_sideband
+
+    def get_sideband_scipy(self, fit_range=[[50., 80.], [160., 190.]], 
+                            plotit=False):
+        
+        r = self.r*1
+        xi = self.xi*1
+
+        peak_range = [fit_range[0][1], fit_range[1][0]]
+        w = ((r>fit_range[0][0])&(r<fit_range[0][1])) | \
+            ((r>fit_range[1][0])&(r<fit_range[1][1]))
+        x_fit = r[w]
+        y_fit = xi[w]
+
+        def broadband(x, *pars):
+            xx = x/100
+            return pars[0]*xx + pars[1] + pars[2]/xx + pars[3]/xx**2 + \
+                   pars[4]*xx**2 + pars[5]*xx**3 + pars[6]*xx**4  
+
+        popt, pcov = curve_fit(broadband, x_fit, y_fit,
+                                p0=[0, 0, 0, 0, 0, 0, 0])
+       
+        xi_sideband = xi*1.
+        w_peak = (r>peak_range[0])&(r<peak_range[1])
+        xi_sideband[w_peak] = broadband(r[w_peak], *popt)
+        
+        self.xi_model = broadband(r, *popt)
+        self.xi_sideband = xi_sideband
+        self.peak_range = peak_range
+        self.fit_range = fit_range
+
+        return xi_sideband
+
+    def plot_sideband_residuals(self):
+        
+        r = self.r*1
+        xi = self.xi*1
+        xis = self.xi_sideband*1
+        xim = self.xi_model*1
+        fit_range = self.fit_range
+
+        w = ((r>fit_range[0][0])&(r<fit_range[1][1]))
+        x = r[w]
+        y = xi[w]
+        ys = xis[w]
+        ym = xim[w] 
+        plt.plot(x, y*x**2)
+        plt.plot(x, ys*x**2)
+        plt.plot(x, ym*x**2)
+
+        
+
 
     def get_sideband_power(self):
 
