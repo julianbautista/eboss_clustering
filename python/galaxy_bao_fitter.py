@@ -349,12 +349,15 @@ class Cosmo:
             apk2d = np.interp(ak2d, self.k, self.pk)
             pk2d_out = ( (apk2d - apk2d_s)*np.exp(-ak2d**2*sigma_v2[:, None]) + apk2d_s)
 
+        #-- this parameters is for intensity mapping only
         if 'beam' in pars:
             pk2d_out *= np.exp( -ak2d**2*pars['beam']**2*(1-amu2d**2)/2) 
         
         pk2d_out *= Kaiser
         pk2d_out *= Dnl**2 
         pk2d_out /= (at**2*ap)
+
+        #-- this parameters is for intensity mapping only
         if 'THI' in pars:
             pk2d_out *= pars['THI']
 
@@ -364,7 +367,6 @@ class Cosmo:
             pk_mult[ell//2] = (2.*ell+1.) * np.sum( pk2d_out * \
                              self.Legendre(ell, mu)[:, None] * dmu[:, None], axis=0)  
 
-        #self.pars = pars.copy()
         self.pk_mult = pk_mult
 
         return pk_mult
