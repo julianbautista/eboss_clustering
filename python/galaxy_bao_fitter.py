@@ -407,10 +407,15 @@ class Cosmo:
 
     @staticmethod
     def test(z=0, 
-             pars_to_test=['aiso', 'epsilon', 'f', 
-                           'Sigma_rec', 'Sigma_s', 'Sigma_NL'],
-             pars0 = {'ap':1.0, 'at': 1.0, 'bias':1.0, 'beta':0.6, \
-                'Sigma_par':10., 'Sigma_per':6., 'Sigma_s':4., 'Sigma_rec':0.},
+             pars_to_test= {'aiso': [0.95, 1.0, 1.05], 
+                            'epsilon': [1.0, 1.0201, 0.9799], 
+                            'beta': [0.35, 0.45, 0.25], 
+                            'Sigma_rec': [0, 5, 10],
+                            'Sigma_s': [0, 5.66, 11.32]},
+             pars_center = {'ap': 1.0, 'at': 1.0, 
+                            'bias': 1.0, 'beta': 0.6, 
+                            'Sigma_par': 10., 'Sigma_per': 6., 
+                            'Sigma_s': 4., 'Sigma_rec': 0.},
              rmin=1., rmax=200., scale_r=2, ell_max=4, figsize=(6, 8)):
 
         r = np.linspace(rmin, rmax, 2000)
@@ -420,8 +425,8 @@ class Cosmo:
 
         if 'aiso' in pars_to_test:
             plt.figure(figsize=figsize)
-            pars = pars0.copy()
-            for i, ap in enumerate([0.95, 1.0, 1.05]):
+            pars = pars_center.copy()
+            for i, ap in enumerate(pars_to_test['aiso']):
                 pars['at'] = ap
                 pars['ap'] = ap
                 aiso = ap
@@ -431,20 +436,18 @@ class Cosmo:
                     plt.plot(r, xi_mult[j]*r**scale_r, 
                              ls=lss[i], color='k', lw=2, \
                              label=r'$\alpha_{\rm iso} = %.2f$'%aiso)
-                    if i==0:
-                        if scale_r == 0:
-                            plt.ylabel(r'$\xi_{%d}$'%(j*2))
-                        else:
-                            plt.ylabel(r'$r^%d \xi_{%d} \ [h^{-%d} \mathrm{Mpc}^{%d}]$'%\
-                                       (scale_r, j*2, scale_r, scale_r))
+                    ylabel = r'$\xi_{%d}$'%(j*2)
+                    if scale_r:
+                        ylabel+= r'$r^%d [h^{-%d} \mathrm{Mpc}^{%d}]$'%(scale_r, scale_r, scale_r)
+                    plt.ylabel(ylabel)
             plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
             plt.legend(loc=0, fontsize=10)
             plt.tight_layout()
 
         if 'epsilon' in pars_to_test: 
             plt.figure(figsize=figsize)
-            pars = pars0.copy()
-            for i, ap in enumerate([0.98, 1.0, 1.02]):
+            pars = pars_center.copy()
+            for i, ap in enumerate(pars_to_test['epsilon']):
                 pars['at'] = 1./np.sqrt(ap)
                 pars['ap'] = ap
                 epsilon = (ap*np.sqrt(ap))**(1./3)-1
@@ -452,134 +455,44 @@ class Cosmo:
                 for j in range(nell):
                     plt.subplot(nell, 1, j+1)
                     plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
-                           label=r'$\epsilon = %.2f$'%epsilon)
-                    if i==0:
-                        plt.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
+                           label=r'$\epsilon = %.3f$'%epsilon)
+                    ylabel = r'$\xi_{%d}$'%(j*2)
+                    if scale_r:
+                        ylabel+= r'$r^%d [h^{-%d} \mathrm{Mpc}^{%d}]$'%(scale_r, scale_r, scale_r)
+                    plt.ylabel(ylabel)
             plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
             plt.legend(loc=0, fontsize=10)
             plt.tight_layout()
 
-        if 'bias' in pars_to_test:
+        for par in pars_to_test:
+            if par == 'aiso' or par == 'epsilon': continue
             plt.figure(figsize=figsize)
-            pars = pars0.copy()
-            for i, bias in enumerate([0.5, 1.0, 1.5]):
-                pars['bias'] = bias
+            pars = pars_center.copy()
+            values = pars_to_test[par]
+            for i, val in enumerate(values):
+                pars[par] = val
                 xi_mult = cosmo.get_multipoles_2d(r, pars)
                 for j in range(nell):
                     plt.subplot(nell, 1, j+1)
                     plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
-                           label=r'$bias = %.2f$'%bias)
-                    if i==0:
-                        if scale_r:
-                            plt.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
-                        else:
-                            plt.ylabel(r'$\xi_{%d}$'%(j*2))
+                           label=f'{par} = {val:.3f}')
+                    ylabel = r'$\xi_{%d}$'%(j*2)
+                    if scale_r:
+                        ylabel+= r'$r^%d [h^{-%d} \mathrm{Mpc}^{%d}]$'%(scale_r, scale_r, scale_r)
+                    plt.ylabel(ylabel)
             plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
             plt.legend(loc=0, fontsize=10)
-            plt.tight_layout()
+            plt.tight_layout() 
 
-        if 'f' in pars_to_test:
-            plt.figure(figsize=figsize)
-            pars = pars0.copy()
-            for i, f in enumerate([0.5, 0.7, 0.9]):
-                pars['beta'] = f/pars['bias']
-                xi_mult = cosmo.get_multipoles_2d(r, pars)
-                for j in range(nell):
-                    plt.subplot(nell, 1, j+1)
-                    plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
-                           label=r'$f = %.2f$'%f)
-                    if i==0:
-                        plt.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
-            plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
-            plt.legend(loc=0, fontsize=10)
-            plt.tight_layout()
+    @staticmethod 
+    def test_xu2012():
 
-
-                
-        if 'Sigma_rec' in pars_to_test:
-            plt.figure(figsize=figsize)
-            pars = pars0.copy()
-            for i, sigma_rec in enumerate([0., 5.0, 10.]):
-                pars['Sigma_rec'] = sigma_rec
-                xi_mult = cosmo.get_multipoles_2d(r, pars)
-                for j in range(nell):
-                    plt.subplot(nell, 1, j+1)
-                    plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
-                           label=r'$\Sigma_r = %.1f$'%sigma_rec)
-                    if i==0:
-                        plt.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
-            plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
-            plt.legend(loc=0, fontsize=10)
-            plt.tight_layout()
-            
-
-        if 'Sigma_s' in pars_to_test: 
-            plt.figure(figsize=figsize)
-            pars = pars0.copy()
-            for i, s in enumerate([0.1, 5., 10.]):
-                pars['Sigma_s'] = s
-                xi_mult = cosmo.get_multipoles_2d(r, pars)
-                for j in range(nell):
-                    plt.subplot(nell, 1, j+1)
-                    plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
-                            label=r'$\Sigma_s = %.1f$'%s)
-                    if i==0:
-                        plt.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
-            plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
-            plt.legend(loc=0, fontsize=10)
-            plt.tight_layout()
-        
-        if 'Sigma_NL' in pars_to_test:        
-            plt.figure(figsize=figsize)
-            pars = pars0.copy()
-            for i, sig in enumerate([[6, 10], [8, 8], [0., 0]]):
-                pars['Sigma_per'] = sig[0]
-                pars['Sigma_par'] = sig[1]
-                xi_mult = cosmo.get_multipoles_2d(r, pars)
-                for j in range(nell):
-                    plt.subplot(nell, 1, j+1)
-                    plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
-                            label=r'$\Sigma_\perp = %.0f,\Sigma_\parallel = %.0f$'%\
-                            (sig[0], sig[1]))
-                    if i==0:
-                        plt.ylabel(r'$r^2 \xi_{%d} \ [h^{-2} \mathrm{Mpc}^{2}]$'%(j*2))
-            plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
-            plt.legend(loc=0, fontsize=10)
-            plt.tight_layout()
-
-        if 'beam' in pars_to_test:
-            plt.figure(figsize=figsize)
-            pars = pars0.copy()
-            for i, beam in enumerate([0, 4.61, 6.34, 14.4]):
-                pars['beam'] = beam
-                xi_mult = cosmo.get_multipoles_2d(r, pars)
-                for j in range(nell):
-                    plt.subplot(nell, 1, j+1)
-                    plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
-                            label=r'$R_{\rm beam} = %.2f Mpc/h$'%beam)
-                    if i==0:
-                        plt.ylabel(r'$\xi_{%d}$'%(j*2))
-            plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
-            plt.legend(loc=0, fontsize=10)
-            plt.tight_layout()
-        
-        if 'THI' in pars_to_test:
-            plt.figure(figsize=figsize)
-            pars = pars0.copy()
-            for i, THI in enumerate([0.5, 1.0, 1.5]):
-                pars['THI'] = THI
-                xi_mult = cosmo.get_multipoles_2d(r, pars)
-                for j in range(nell):
-                    plt.subplot(nell, 1, j+1)
-                    plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
-                            label=r'$\bar{T}_{\rm HI} = %.2f [mK]$'%THI)
-                    if i==0:
-                        plt.ylabel(r'$\xi_{%d}$'%(j*2))
-            plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
-            plt.legend(loc=0, fontsize=10)
-            plt.tight_layout()
-        
-             
+        Cosmo.test(z=0.35, 
+                   pars_to_test={'epsilon': [1.0, 1.0201, 0.9799]}, 
+                   pars_center={'ap': 1.0, 'at': 1.0, 'bias': 2.2, 'beta': 0.35, 
+                                'Sigma_par': 0.0, 'Sigma_per': .0, 'Sigma_s': 0, 
+                                'Sigma_rec': 0.0})
+         
 
     def get_dist_rdrag(self):
         
