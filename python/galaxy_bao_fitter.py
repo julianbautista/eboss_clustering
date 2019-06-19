@@ -395,11 +395,11 @@ class Cosmo:
 
         return rout, xi_mult
 
-    def get_multipoles_2d(self, rout, pars, ell_max=4, no_peak=0):
+    def get_multipoles_2d(self, rout, pars, ell_max=4, no_peak=0, r0=1.):
 
         pk_multipoles = self.get_2d_power_spectrum(pars, ell_max=ell_max,\
                                                     no_peak=no_peak)
-        r, cf_multipoles = self.get_multipoles_from_pk(self.k, pk_multipoles)
+        r, cf_multipoles = self.get_multipoles_from_pk(self.k, pk_multipoles, r0=r0)
        
         nmult = cf_multipoles.shape[0]
         cf_out = np.zeros((nmult, rout.size))
