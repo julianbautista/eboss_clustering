@@ -10,18 +10,19 @@ from scipy.ndimage import gaussian_filter1d
 
 class Cosmo:
 
-    def __init__(self, z=0.0, name='challenge', norm_pk=False, non_linear=False):
+    def __init__(self, z=0.0, name='challenge', norm_pk=False, non_linear=False, 
+                 nk=2048, kmax=100., nmu=201):
         self.get_matter_power_spectrum(z=z, name=name, norm_pk=norm_pk, 
-                                       non_linear=non_linear)
-        self.get_correlation_function(update=1)
+                                       non_linear=non_linear, kmax=kmax, nk=nk)
+        self.r, self.xi = self.get_correlation_function()
         #self.get_sideband()
         self.get_sideband_scipy()
         self.get_sideband_power()
-        self.set_2d_arrays()
+        self.set_2d_arrays(nmu=nmu)
 
-    def get_matter_power_spectrum(self, pars=None, z=0.0, non_linear=0, \
-                                        name='challenge', norm_pk=0):
-
+    def get_matter_power_spectrum(self, pars=None, z=0.0, non_linear=0, 
+                                        name='challenge', norm_pk=0, 
+                                        kmax=100., nk=4098):
 
         #-- to set sigma8 value, scale As by the square of ratio of sigma8
         if pars is None:
@@ -61,7 +62,7 @@ class Cosmo:
         pars.set_dark_energy()
         
         #-- compute power spectrum
-        pars.set_matter_power(redshifts=[z], kmax=100.0, k_per_logint=None)
+        pars.set_matter_power(redshifts=[z], kmax=2*kmax, k_per_logint=None)
 
         #-- set non-linear power spectrum
         if non_linear:
@@ -71,7 +72,7 @@ class Cosmo:
 
         results = camb.get_results(pars)
         kh, z, pk = results.get_matter_power_spectrum(\
-                        minkh=1.05e-5, maxkh=100., npoints = 2048)
+                        minkh=1.05e-5, maxkh=kmax, npoints = nk)
 
         
         sigma8 = results.get_sigma8()
@@ -99,7 +100,10 @@ class Cosmo:
         
     def get_correlation_function(self, k=None, pk=None,  
                                  Sigma_nl=0., r=None, 
-                                 r0=1., inverse=0, update=0):
+                                 r0=1., inverse=0):
+        ''' This computes isotropic xi(r) from isotropic P(k)
+            Currently not used by fitter but useful for tests 
+        '''
 
         if k is None or pk is None:
             k = self.k
@@ -121,10 +125,6 @@ class Cosmo:
             xiout /= norm
         else:
             xiout *= norm
-
-        if update:
-            self.r = rout
-            self.xi = xiout
 
         return rout, xiout
 
@@ -157,7 +157,10 @@ class Cosmo:
 
     def get_sideband_scipy(self, fit_range=[[50., 80.], [160., 190.]], 
                             plotit=False):
-        
+        ''' Gets correlation function without BAO peak using 
+            scipy.optimize.minimize function 
+        '''
+
         r = self.r*1
         xi = self.xi*1
 
@@ -203,10 +206,8 @@ class Cosmo:
         plt.plot(x, ys*x**2)
         plt.plot(x, ym*x**2)
 
-        
-
-
     def get_sideband_power(self):
+        ''' Get power spectrum of sideband '''
 
         ks, pks = self.get_correlation_function(k=self.r, pk=self.xi_sideband,\
                                                 inverse=1, r=self.k)
@@ -249,6 +250,8 @@ class Cosmo:
         ''' Compute multipoles from isotropic correlation function 
             with linear redshift-space distortions
             following Hamilton 1992
+
+            Currently not used but here for reference
         '''
         xib   = np.array([ np.sum(xi[:i]*r[:i]**2) for i in range(r.size)])\
                 * 3./r**3 * np.gradient(r)
@@ -259,16 +262,16 @@ class Cosmo:
         xi4 = 8./35*f**2*(xi + 2.5*xib - 3.5*xibb)
         return xi0, xi2, xi4
 
-    def set_2d_arrays(self):
+    def set_2d_arrays(self, nmu=201):
 
-        self.mu = np.linspace(0, 1., 201)
+        self.mu = np.linspace(0, 1., nmu)
         self.mu2d = np.tile(self.mu[:, None], (1, self.k.size))
         self.k2d = np.tile(self.k, (self.mu.size, 1))
 
     def get_2d_power_spectrum(self, pars, ell_max=2, no_peak=0):
 
-        if hasattr(self, 'pars') and pars==self.pars:
-            return self.pk_mult
+        #if hasattr(self, 'pars') and pars==self.pars:
+        #    return self.pk_mult
 
         if 'aiso' in pars:
             at = pars['aiso']
@@ -284,6 +287,8 @@ class Cosmo:
 
         k = self.k
         mu = self.mu
+        
+        #-- These have shape = (nmu, nk) 
         mu2d = self.mu2d 
         k2d = self.k2d 
    
@@ -296,6 +301,8 @@ class Cosmo:
             F = ap/at
             ak2d = k2d/at * np.sqrt( 1 + mu2d**2 * (1/F**2 - 1) )
             amu   = mu/F  * np.sqrt( 1 + mu**2   * (1/F**2 - 1) )**(-1) 
+
+        #-- This has shape = (nmu, nk) 
         amu2d = np.broadcast_to( amu, (k.size, amu.size)).T 
 
 
@@ -335,8 +342,10 @@ class Cosmo:
                          (bias2+f *(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2)
 
         #-- Fingers of God
-        Sigma_stream = pars['Sigma_s']
-        Dnl = 1./( 1 + ak2d**2*amu2d**2*Sigma_stream**2/2)
+        if pars['Sigma_s'] != 0:
+            Dnl = 1./( 1 + ak2d**2*amu2d**2*pars['Sigma_s']**2/2)
+        else:
+            Dnl = 1
 
         #-- Sideband model (no BAO peak)
         apk2d_s = np.interp(ak2d, self.k, self.pk_sideband)
@@ -361,12 +370,18 @@ class Cosmo:
         if 'THI' in pars:
             pk2d_out *= pars['THI']
 
-        pk_mult = np.zeros((ell_max//2+1, k.size))
-        dmu = np.gradient(mu)
-        for ell in range(0, ell_max+2, 2):
-            pk_mult[ell//2] = (2.*ell+1.) * np.sum( pk2d_out * \
-                             self.Legendre(ell, mu)[:, None] * dmu[:, None], axis=0)  
+        self.amu2d = amu2d
+        self.ak2d = ak2d
 
+        return pk2d_out
+
+    def get_pk_multipoles(self, mu2d, pk2d, ell_max=4):
+        
+        nk = pk2d.shape[1]
+        pk_mult = np.zeros((ell_max//2+1, nk))
+        for ell in range(0, ell_max+2, 2):
+            Leg = self.Legendre(ell, mu2d)
+            pk_mult[ell//2] = (2*ell+1)*np.trapz(pk2d*Leg, x=mu2d, axis=0)
         self.pk_mult = pk_mult
 
         return pk_mult
@@ -374,7 +389,7 @@ class Cosmo:
     def Legendre(self, ell, mu):
 
         if ell == 0:
-            return np.ones(mu.shape)
+            return 1
         elif ell == 2:
             return 0.5*(3*mu**2-1)
         elif ell == 4:
@@ -382,7 +397,7 @@ class Cosmo:
         else:
             return -1
 
-    def get_multipoles_from_pk(self, k, pk_mult, r0=1., r=None):
+    def get_xi_multipoles_from_pk(self, k, pk_mult, r0=1., r=None):
 
         xi_mult = pk_mult*0
         ell_max = xi_mult.shape[0]*2
@@ -395,17 +410,18 @@ class Cosmo:
 
         return rout, xi_mult
 
-    def get_multipoles_2d(self, rout, pars, ell_max=4, no_peak=0, r0=1.):
+    def get_xi_multipoles(self, rout, pars, ell_max=4, no_peak=False, r0=1.):
 
-        pk_multipoles = self.get_2d_power_spectrum(pars, ell_max=ell_max,\
-                                                    no_peak=no_peak)
-        r, cf_multipoles = self.get_multipoles_from_pk(self.k, pk_multipoles, r0=r0)
+        pk2d = self.get_2d_power_spectrum(pars, 
+                            ell_max=ell_max, no_peak=no_peak)
+        pk_mult = self.get_pk_multipoles(self.mu2d, pk2d)
+        r, xi_mult = self.get_xi_multipoles_from_pk(self.k, pk_mult, r0=r0)
        
-        nmult = cf_multipoles.shape[0]
-        cf_out = np.zeros((nmult, rout.size))
+        nmult = ell_max//2+1
+        xi_out = np.zeros((nmult, rout.size))
         for i in range(nmult):
-            cf_out[i] = np.interp(rout, r, cf_multipoles[i])
-        return cf_out
+            xi_out[i] = np.interp(rout, r, xi_mult[i])
+        return xi_out
 
     @staticmethod
     def test(z=0, 
@@ -413,7 +429,7 @@ class Cosmo:
                             'epsilon': [1.0, 1.0201, 0.9799], 
                             'beta': [0.35, 0.45, 0.25], 
                             'Sigma_rec': [0, 5, 10],
-                            'Sigma_s': [0, 5.66, 11.32]},
+                            'Sigma_s': [0, 2, 4]},
              pars_center = {'ap': 1.0, 'at': 1.0, 
                             'bias': 1.0, 'beta': 0.6, 
                             'Sigma_par': 10., 'Sigma_per': 6., 
@@ -432,7 +448,7 @@ class Cosmo:
                 pars['at'] = ap
                 pars['ap'] = ap
                 aiso = ap
-                xi_mult = cosmo.get_multipoles_2d(r, pars, ell_max=ell_max)
+                xi_mult = cosmo.get_xi_multipoles(r, pars, ell_max=ell_max)
                 for j in range(nell):
                     plt.subplot(nell, 1, j+1)
                     plt.plot(r, xi_mult[j]*r**scale_r, 
@@ -453,7 +469,7 @@ class Cosmo:
                 pars['at'] = 1./np.sqrt(ap)
                 pars['ap'] = ap
                 epsilon = (ap*np.sqrt(ap))**(1./3)-1
-                xi_mult = cosmo.get_multipoles_2d(r, pars)
+                xi_mult = cosmo.get_xi_multipoles(r, pars)
                 for j in range(nell):
                     plt.subplot(nell, 1, j+1)
                     plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
@@ -473,7 +489,7 @@ class Cosmo:
             values = pars_to_test[par]
             for i, val in enumerate(values):
                 pars[par] = val
-                xi_mult = cosmo.get_multipoles_2d(r, pars)
+                xi_mult = cosmo.get_xi_multipoles(r, pars)
                 for j in range(nell):
                     plt.subplot(nell, 1, j+1)
                     plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
@@ -643,7 +659,7 @@ class Model:
     def value(self, rout, pars):
 
         ell_max = 0 + 2*(self.fit_quad) + 2*(self.fit_hexa)
-        cf_out = self.cosmo.get_multipoles_2d(rout,  pars, 
+        cf_out = self.cosmo.get_xi_multipoles(rout,  pars, 
                             ell_max=ell_max, no_peak=self.no_peak)
         return cf_out.ravel()
 
