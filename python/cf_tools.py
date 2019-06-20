@@ -7,6 +7,7 @@ import glob
 
 from scipy.optimize import minimize
 #from astropy.io import fits
+import iminuit
 
 class Corr:
 
@@ -209,6 +210,19 @@ class Corr:
 
         return c
 
+    @staticmethod
+    def get_full_covariance(root, rebin_r=1, shift_r=0):
+        allm = glob.glob(root)
+        nmocks = len(allm)
+       
+        cs = []
+        for m in allm:
+            c = Corr(m, rebin_r=rebin_r, shift_r=shift_r)
+            cs.append(c.cf.ravel())
+        cs = np.array(cs)
+        coss = np.cov(cs.T)
+        del(cs)
+        return coss
         
 class Wedges:
 
@@ -421,23 +435,77 @@ class Multipoles:
         hexa = np.trapz(xi4, dx=dmu, axis=1)
         return mono, quad, hexa
     
-    def fit_multipoles(self, mu_min=0., mu_max=1.0):
-
-        def chi2(p, mu, cf, mu_max):
-            w = (mu<mu_max)
-            model = p[0] + p[1]*0.5*(3*mu[w]**2-1) \
-                    #+ p[2]*0.25*(35**mu**4-30*mu**2+3)
-            return sum((cf[w]-model)**2)
+    def fit_multipoles(self, cov=None, mu_min=0., mu_max=1.0, verbose=False):
+        
+        try:
+            cf2d = self.cute.cf.ravel()
+            r2d = self.cute.r2d.ravel()
+            mu = self.cute.mu
+        except:
+            print('The 2D information is not available')
+            return
 
         self.mono = np.zeros(self.r.size)
         self.quad = np.zeros(self.r.size)
+        self.hexa = np.zeros(self.r.size)
+        if cov is None:
+            cov = np.diag(np.ones(cf.size))
+
 
         for i in range(self.r.size):
-            par = minimize(chi2, np.array([0., 0.]), \
-                           args=(self.mu, self.cf[i], mu_max), \
-                           method='Nelder-Mead')
-            self.mono[i] = par['x'][0]
-            self.quad[i] = par['x'][1]
+            r = self.r[i]
+            w = r2d == r
+            cov_cut = cov[:, w]
+            cov_cut = cov_cut[w] 
+            inv_cov = np.linalg.inv(cov_cut)
+            cf = cf2d[w]
+ 
+
+            def get_model(mu, p):
+                model = p[0] + \
+                        p[1]*0.50*(3*mu**2-1) + \
+                        p[2]*0.25*(35**mu**4-30*mu**2+3)
+                return model
+
+            def chi2(p):
+                model = get_model(mu, p)
+                residual = cf-model
+                chi2 = np.dot(residual, np.dot(inv_cov, residual))
+                return chi2
+
+            #par = minimize(chi2, np.array([0., 0., 0.]), 
+            #               method='Nelder-Mead')
+            #model0 = get_model(mu, par['x'])
+        
+            par_names = ['mono', 'quad', 'hexa']
+            init_pars = {par:0 for par in par_names}
+            for par in par_names:
+                init_pars['error_'+par] = 10 
+            mig = iminuit.Minuit(chi2, throw_nan=False, 
+                         forced_parameters=par_names, 
+                         print_level=0, errordef=1,
+                         use_array_call=True,
+                          **init_pars)
+            mig.tol = 1.0 
+            imin = mig.migrad()
+            is_valid = imin[0]['is_valid']
+            best_pars = mig.values 
+            errors = mig.errors
+            chi2min = mig.fval
+            ndata = mu.size
+            npars = mig.narg
+            if verbose:
+                print(f'{is_valid} {chi2min} {ndata} {npars}')
+                if i%5==0:
+                    plt.figure()
+                    plt.errorbar(mu, cf, np.sqrt(np.diag(cov_cut)), fmt='.')
+                    plt.plot(mu, get_model(mu, best_pars.values()), label='iminuit')
+                    plt.plot(mu, model0, '--', label='minimize')
+                    plt.title(f'r = {r} chi2 = {chi2min}')
+            self.mono[i] = best_pars['mono']
+            self.quad[i] = best_pars['quad']
+            self.hexa[i] = best_pars['hexa']
+
 
     def plot(self, fig=None, figsize=(12, 5), errors=0, scale_r=2, **kwargs):
 

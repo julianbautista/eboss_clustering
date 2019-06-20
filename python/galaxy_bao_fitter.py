@@ -11,7 +11,7 @@ from scipy.ndimage import gaussian_filter1d
 class Cosmo:
 
     def __init__(self, z=0.0, name='challenge', norm_pk=False, non_linear=False, 
-                 nk=2048, kmax=100., nmu=201):
+                 nk=2048, kmax=100., nmu=101):
         self.get_matter_power_spectrum(z=z, name=name, norm_pk=norm_pk, 
                                        non_linear=non_linear, kmax=kmax, nk=nk)
         self.r, self.xi = self.get_correlation_function()
@@ -28,31 +28,30 @@ class Cosmo:
         if pars is None:
             pars = camb.CAMBparams()
             if name == 'challenge':
-                pars.set_cosmology(H0=67.6, ombh2=0.0220,  \
-                                    omch2=0.11902256, \
+                pars.set_cosmology(H0=67.6, ombh2=0.0220,  
+                                    omch2=0.11902256, 
                                     YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
-                #pars.InitPower.set_params(As=2.039946656721871e-09, ns=0.97)
                 pars.InitPower.set_params(As=2.0406217009089533e-09, ns=0.97)
             elif name == 'qpm':
-                pars.set_cosmology(H0=70., ombh2=0.022470,  \
-                                    omch2=0.11963, \
-                                    YHe=0.24,nnu=3.04,  mnu=0, \
+                pars.set_cosmology(H0=70., ombh2=0.022470,  
+                                    omch2=0.11963, 
+                                    YHe=0.24,nnu=3.04,  mnu=0, 
                                     TCMB=2.7250, num_massive_neutrinos=0)
                 pars.InitPower.set_params(As=2.3e-09, ns=0.97)
             elif name == 'planck':
-                pars.set_cosmology(H0=67.31, ombh2=0.02222, \
-                                   omch2=0.1197, \
+                pars.set_cosmology(H0=67.31, ombh2=0.02222, 
+                                   omch2=0.1197, 
                                    YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
                 pars.InitPower.set_params(As=2.198e-09, ns=0.9655)
             elif name == 'outerim':
-                pars.set_cosmology(H0=71., ombh2=0.022584, \
-                                   omch2=0.10848, \
+                pars.set_cosmology(H0=71., ombh2=0.022584, 
+                                   omch2=0.10848, 
                                    YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.0,
                                     num_massive_neutrinos=0)
                 pars.InitPower.set_params(As=2.224615e-09, ns=0.963)
             elif name == 'EZmock':
-                pars.set_cosmology(H0=67.77, ombh2=0.0221399210, \
-                                   omch2=0.1189110239, \
+                pars.set_cosmology(H0=67.77, ombh2=0.0221399210, 
+                                   omch2=0.1189110239, 
                                    YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.0,
                                     num_massive_neutrinos=0)
                 pars.InitPower.set_params(As=2.11622e-09, ns=0.9611)
@@ -270,8 +269,8 @@ class Cosmo:
 
     def get_2d_power_spectrum(self, pars, ell_max=2, no_peak=0):
 
-        #if hasattr(self, 'pars') and pars==self.pars:
-        #    return self.pk_mult
+        if hasattr(self, 'pars') and pars==self.pars:
+            return self.pk2d_out
 
         if 'aiso' in pars:
             at = pars['aiso']
@@ -372,6 +371,8 @@ class Cosmo:
 
         self.amu2d = amu2d
         self.ak2d = ak2d
+        self.pk2d_out = pk2d_out
+        self.pars = pars
 
         return pk2d_out
 
@@ -397,30 +398,26 @@ class Cosmo:
         else:
             return -1
 
-    def get_xi_multipoles_from_pk(self, k, pk_mult, r0=1., r=None):
+    def get_xi_multipoles_from_pk(self, k, pk_mult, output_r=None, r0=1.):
 
-        xi_mult = pk_mult*0
-        ell_max = xi_mult.shape[0]*2
-
-        for ell in range(0, ell_max, 2):
-            rout, xiout = fftlog.HankelTransform(k, pk_mult[ell//2], q=1.5, mu=0.5+ell, \
-                                                 output_r_power=-3, output_r=r, r0=r0)
+        xi_mult = []
+        ell = 0 
+        for pk in pk_mult:
+            rout, xiout = fftlog.HankelTransform(k, pk, mu=0.5+ell, output_r=output_r,
+                                                 output_r_power=-3, q=1.5, r0=r0)
             norm = 1/(2*np.pi)**1.5 * (-1)**(ell/2)
-            xi_mult[ell//2] = xiout*norm 
+            xi_mult.append(xiout*norm)
+            ell+=2 
 
-        return rout, xi_mult
+        return rout, np.array(xi_mult)
 
     def get_xi_multipoles(self, rout, pars, ell_max=4, no_peak=False, r0=1.):
 
         pk2d = self.get_2d_power_spectrum(pars, 
                             ell_max=ell_max, no_peak=no_peak)
-        pk_mult = self.get_pk_multipoles(self.mu2d, pk2d)
-        r, xi_mult = self.get_xi_multipoles_from_pk(self.k, pk_mult, r0=r0)
-       
-        nmult = ell_max//2+1
-        xi_out = np.zeros((nmult, rout.size))
-        for i in range(nmult):
-            xi_out[i] = np.interp(rout, r, xi_mult[i])
+        pk_mult = self.get_pk_multipoles(self.mu2d, pk2d, ell_max=ell_max)
+        r, xi_out = self.get_xi_multipoles_from_pk(self.k, pk_mult, 
+                        output_r=rout, r0=r0)
         return xi_out
 
     @staticmethod
@@ -570,6 +567,7 @@ class Data:
         self.r = np.unique(rr)
         self.cf = cf
         self.coss = coss
+        print('Covariance matrix is positive definite?', np.all(np.linalg.eigvals(coss)>0))
         self.icoss = np.linalg.inv(coss)
         if nmocks:
             correction = (1 - (cf.size + 1.)/(nmocks-1))
@@ -664,7 +662,10 @@ class Model:
         return cf_out.ravel()
 
     def get_broadband(self, rout, pars):
-       
+        
+        if hasattr(self, 'pars_bb') and self.pars_bb==pars:
+            return self.bb
+  
         monobb = rout*0.
         quadbb = rout*0.
         hexabb = rout*0.
@@ -681,6 +682,9 @@ class Model:
             bb = np.append(bb, quadbb)
         if self.fit_hexa:
             bb = np.append(bb, hexabb)
+        self.pars_bb = pars
+        self.bb = bb
+
         return bb
 
 class Chi2: 
@@ -741,9 +745,14 @@ class Chi2:
         if pars is None:
             pars = self.best_pars
 
-        model = self.model.value(r, pars)
+        pars_cosmo = {par: pars[par] for par in pars if not par.startswith('bb')}
+        model = self.model.value(r, pars_cosmo)
+
         if self.model.fit_broadband:
-            model += self.model.get_broadband(r, pars)
+            pars_bb = {par: pars[par] for par in pars if par.startswith('bb')}
+            bb = self.model.get_broadband(r, pars_bb)
+            model += bb
+
         return model
 
     def __call__(self, *p):
@@ -791,8 +800,7 @@ class Chi2:
                              forced_parameters=self.model.pars_names, 
                              print_level=1, errordef=1, 
                              **init_pars)
-                             #frontend=iminuit.frontends.ConsoleFrontend(), \
-        mig.tol = 10.0 
+        #mig.tol = 10.0 
         imin = mig.migrad()
         #mig.hesse()
         self.mig = mig
@@ -808,8 +816,8 @@ class Chi2:
             if mig.fitarg['fix_'+par]:
                 self.npars -= 1
         self.rchi2min = self.chi2min/(self.ndata-self.npars)
-        print('chi2 = %.2f   ndata = %d   npars = %d   rchi2 = %.4f'%\
-                (self.chi2min, self.ndata, self.npars, self.rchi2min))
+        print(f'chi2/(ndata-npars) = {self.chi2min:.2f}/({self.ndata}-{self.npars}) = {self.rchi2min:.2f}') 
+
 
     def plot_bestfit(self, fig=None, model_only=0, scale_r=2, label=None, figsize=(12, 5)):
 
@@ -877,7 +885,6 @@ class Chi2:
 
             mig = iminuit.Minuit(self, forced_parameters=self.model.pars_names, \
                                  print_level=1, errordef=1, \
-                                 frontend=iminuit.frontends.ConsoleFrontend(), \
                                  **init_pars)
             mig.migrad()
             print( 'scanning: %s = %.5f  chi2 = %.4f'%(par_name, value, mig.fval))
@@ -919,7 +926,6 @@ class Chi2:
                 mig = iminuit.Minuit(self, \
                          forced_parameters=self.model.pars_names, \
                          print_level=1, errordef=1, \
-                         frontend=iminuit.frontends.ConsoleFrontend(), \
                          **init_pars)
                 mig.migrad()
                 print( 'scanning: %s = %.5f   %s = %.5f    chi2 = %.4f'%\

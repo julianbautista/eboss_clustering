@@ -4,6 +4,7 @@ import sys
 import argparse
 import os
 import numpy as np 
+import time
 
 from galaxy_bao_fitter import *
 from cf_tools import Multipoles
@@ -172,9 +173,13 @@ model = Model(fit_broadband=args.fit_broadband,
               bb_min=args.bb_min, bb_max=args.bb_max)
 
 #-- Perform fit and export
+sec0 = time.time()
 chi2 = Chi2(data=data, model=model)
 chi2.fit(fixes=fixes, priors=priors, limits=limits) 
 chi2.export(output+'.pars')
+sec1 = time.time()
+tmin = (sec1-sec0)/60
+print(f'Time elapsed during fit: {tmin:.2f} minutes')
 
 
 #-- Initiate and perform fit without BAO peak
@@ -188,7 +193,9 @@ if args.fit_nopeak:
     chi2_nopeak = Chi2(data=data, model=model_nopeak)
     chi2_nopeak.fit(fixes=fixes, priors=priors, limits=limits)
     chi2_nopeak.export(output+'-nopeak.pars')
-
+    sec2 = time.time()
+    tmin = (sec2-sec1)/60
+    print(f'Time elapsed during fit of no peak: {tmin:.2f} minutes')
 
 #-- Get assymetric error bars
 if args.minos:
@@ -196,10 +203,17 @@ if args.minos:
         print('Performing minos for', par)
         minos = chi2.mig.minos(var=par)
         fout = open(output+'.%s.minos'%par, 'w')
-        print(par, minos[par]['min'], minos[par]['lower'], 
-               minos[par]['upper'], minos[par]['is_valid'], file=fout)
+        val = minos[par]['min']
+        low = minos[par]['lower']
+        upp = minos[par]['upper']
+        err = 0.5*(-low+upp)
+        print(f'{par} = {val:.4f} +/- {err:.4f}') 
+        print(par, val, low, upp, minos[par]['is_valid'], file=fout)
         fout.close()
 
+    sec3 = time.time()
+    tmin = (sec3-sec2)/60
+    print(f'Time elapsed during minos: {tmin:.2f} minutes')
 
 #-- Perform one dimensional scans of chi2
 if args.scan:
@@ -218,6 +232,11 @@ if args.scan:
             print( par_scan[i], chi2_scan[i], file=fout)
         fout.close()
         print('chi2 scan exported to:', output+'.%s.scan'%par)
+
+    sec4 = time.time()
+    tmin = (sec4-sec3)/60
+    print(f'Time elapsed during scan1d: {tmin:.2f} minutes')
+
 
 #-- Perform one dimensional scans of chi2 for no peak model
 if args.scan_nopeak:
@@ -257,6 +276,10 @@ if args.scan2d:
                 print(par_scan0[i], par_scan1[j], chi2_scan[i, j], file=fout)
         fout.close()
         print('chi2 scan exported to:', filename)
+
+    sec5 = time.time()
+    tmin = (sec5-sec4)/60
+    print(f'Time elapsed during scan2d: {tmin:.2f} minutes')
 
 
 if args.plotit:
