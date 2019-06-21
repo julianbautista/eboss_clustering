@@ -958,46 +958,53 @@ class Chi2:
     def read_scan2d(self, fin):
 
         sfin = fin.split('.')
-        par_name0 = sfin[-3]
-        par_name1 = sfin[-2]
+        #par_name0 = sfin[-3]
+        #par_name1 = sfin[-2]
 
         x, y, chi2 = np.loadtxt(fin, unpack=1)
         bestx = x[0]
         besty = y[0]
         chi2min = chi2[0]
+        if chi2min>chi2.min():
+            chi2min = chi2.min()
+            i=0
+        else:
+            i=1
 
-        x = np.unique(x[1:])
-        y = np.unique(y[1:])
-        chi2scan2d = np.reshape(chi2[1:], (x.size, y.size)).transpose()
+        x = np.unique(x[i:])
+        y = np.unique(y[i:])
+        chi2scan2d = np.reshape(chi2[i:], (x.size, y.size)).transpose()
         
         self.chi2scan2d = chi2scan2d
         self.x=x
         self.y=y
-        self.par_name0=par_name0
-        self.par_name1=par_name1
+        #self.par_name0=par_name0
+        #self.par_name1=par_name1
         self.bestx=bestx
         self.besty=besty
         self.chi2min=chi2min
 
-    def plot_scan2d(self, levels=[2.3, 6.18, 11.83], ls=['-', '--', ':'], \
-                    color='b',  alpha=1.0, label=None, scale_dist=0):
+    def plot_scan2d(self, levels=[2.3, 6.18, 11.83, 19.33], ls=['-', '--', '-.', ':'], \
+                    color='b',  alpha=1.0, label=None, scale_dist=0,
+                    transverse=False, DM_rd=None, DH_rd=None):
 
+        if transverse:
+            x = self.y
+            y = self.x
+            chi2 = self.chi2scan2d.T
+        else:
+            x = self.x
+            y = self.y
+            chi2 = self.chi2scan2d
 
         for i in range(len(levels)):
             if i!=0:
                 label=None
             if scale_dist:
-                DM_rd = self.DM_rd
-                DH_rd = self.DH_rd
-                x = self.x*DM_rd
-                y = self.y*DH_rd
-            else:
-                x = self.x*1.
-                y = self.y*1.
-            plt.contour(x, y, self.chi2scan2d-self.chi2min, \
-                      levels=[levels[i]], \
-                      linestyles=[ls[i]], colors=color, alpha=alpha,\
-                      label=label)
+                x *= DM_rd
+                y *= DH_rd
+            plt.contour(x, y, chi2-self.chi2min,
+                        levels=[levels[i]], linestyles=[ls[i]], colors=color, alpha=alpha)
 
     def get_parameter(self, par_name='alpha'):
 
