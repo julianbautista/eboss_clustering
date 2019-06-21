@@ -184,6 +184,7 @@ print(f'Time elapsed during fit: {tmin:.2f} minutes')
 
 #-- Initiate and perform fit without BAO peak
 if args.fit_nopeak:
+    sec1 = time.time()
     model_nopeak = Model(fit_broadband=args.fit_broadband, 
                          fit_quad=args.fit_quad,
                          fit_hexa=args.fit_hexa,
@@ -199,6 +200,7 @@ if args.fit_nopeak:
 
 #-- Get assymetric error bars
 if args.minos:
+    sec2 = time.time()
     for par in args.minos:
         print('Performing minos for', par)
         minos = chi2.mig.minos(var=par)
@@ -217,6 +219,7 @@ if args.minos:
 
 #-- Perform one dimensional scans of chi2
 if args.scan:
+    sec3 = time.time()
     for i in range(0, len(args.scan), 4):
         par = args.scan[i]
         low = float(args.scan[i+1])
@@ -258,6 +261,7 @@ if args.scan_nopeak:
 
 #-- Perform two dimensional scans of chi2
 if args.scan2d:
+    sec4 = time.time()
     for i in range(0, len(args.scan2d), 8):
         par_names = [args.scan2d[i], args.scan2d[i+4]]
         low = [float(args.scan2d[i+1]), float(args.scan2d[i+5])]
