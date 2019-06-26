@@ -2,6 +2,8 @@ import numpy as np
 import pylab as plt
 from astropy.io import fits
 from astropy.table import Table
+from scipy.optimize import minimize
+import iminuit
 
 def assign_specsn2(dat):
     ''' Assigns the correct value of spectrograph S/N for 
@@ -111,6 +113,59 @@ def fit_specsn(dat, band='I', nbins=500):
     print('chi2 =', chi2, 'ndata =', ndata, 'npars =', npars, 'rchi2 =',rchi2)
     return coeff
 
+
+def fit_fiberid(dat, nbins=500, verbose=False):
+
+    bins, ngood, nall = bin_redshift_failures(dat,
+                            field='FIBERID', nbins=nbins)
+    x = 0.5*(bins[1:]+bins[:-1])
+
+    w = (nall > 50)&(nall-ngood > 0)
+    nall = nall[w]
+    ngood = ngood[w]
+    x = x[w]
+    y = ngood/(nall)
+    dy = error_of_ratio_poisson(nall-ngood, nall)
+
+    def chi2(p):
+        model = get_fiberid_efficiency(p, x)
+        residual = y-model
+        chi2 = np.sum(residual**2/dy**2)
+        return chi2
+
+    par0 = np.array([0., 0., 0., 0., 0., 1.])
+
+    par_names = ['C%d'%i for i in range(par0.size)]
+    init_pars = {par_names[i]: par0[i] for i in range(par0.size)}
+    for i in range(par0.size):
+        init_pars['error_C%d'%i] = 10
+    mig = iminuit.Minuit(chi2, throw_nan=False,
+                 forced_parameters=par_names,
+                 print_level=0, errordef=1,
+                 use_array_call=True,
+                  **init_pars)
+    #mig.tol = 1.0
+    imin = mig.migrad()
+    is_valid = imin[0]['is_valid']
+    coeff = mig.values.values()
+    chi2min = mig.fval
+    ndata = x.size
+    npars = mig.narg
+    rchi2 = chi2min/(ndata-npars)
+    ymodel = get_fiberid_efficiency(coeff, x)
+
+    if verbose:
+        print('Minuit === Fit of efficiency vs FIBERID')
+        print('chi2 =', chi2min, 'ndata =', ndata, 'npars =', npars, 'rchi2 =',rchi2)
+    return coeff, x, y, dy, ymodel
+
+def get_fiberid_efficiency(coeff, fiberid):
+    #x = fiberid/np.mean(fiberid)-1
+    x = fiberid/1000
+    #return coeff[0] - coeff[1]*np.abs(x)**coeff[2]
+    m = np.polyval(coeff, x)
+    return m
+
 def get_specsn_efficiency(coeff, specsn2):
     ''' Model used to fit efficiencies as function of SPECSN2'''
     return 1-1/(1+np.polyval(coeff, specsn2))
@@ -131,22 +186,29 @@ def get_specsn_weights(dat, band='I'):
 
     return weight_noz, coeff
 
-def get_fiberid_weights(dat, nbins=100):
+def get_fiberid_weights(dat, nbins=126, plotit=False, verbose=False):
     ''' Computes redshift failure weights from FIBERID '''  
 
-    #-- get redshift weights from FIBERID dependency
-    bins, ng, na = bin_redshift_failures(dat, field='FIBERID', nbins=nbins)
-    efficiency = ng/na
-
-    #-- Need to model this better
-    #-- For now, just assigning the values on each bin
-    index = np.floor( (dat['FIBERID']-bins[0]) / 
-                      (bins[-1]      -bins[0]) * 
-                      (bins.size-1)).astype(int)
     weight_noz = np.zeros(len(dat))
-    w = (index>=0)&(index<efficiency.size)
-    weight_noz[w] = 1/efficiency[index[w]]
+    fiberid_bins = [0, 250, 500, 750, 1000]
 
+    if plotit:
+        plt.figure(figsize=(14, 5))
+    for i in range(4):
+        fmin = fiberid_bins[i]
+        fmax = fiberid_bins[i+1]
+        w = (dat['FIBERID'] > fmin)&(dat['FIBERID'] <= fmax)
+        coeff, x, y, dy, ymodel = fit_fiberid(dat[w], nbins=nbins, verbose=verbose)
+        weight_noz[w] = 1/get_fiberid_efficiency(coeff, dat['FIBERID'][w])
+
+        if plotit:
+            plt.errorbar(x, y, dy, fmt='o', color='C%i'%i, ms=2, alpha=0.3)
+            plt.plot(x, ymodel, 'C%d'%i)
+    if plotit:
+        plt.ylim(0.88, 1.01)
+        plt.grid()
+    
+    
     return weight_noz 
 
 def plot_failures(dat, weight_noz=None, coeff=None):
@@ -161,15 +223,7 @@ def plot_failures(dat, weight_noz=None, coeff=None):
     wall = where_all_spectra(dat)
     wgood = where_good_spectra(dat)
 
-    if weight_noz is None:
-        weight_noz1, coeff = get_specsn_weights(dat)
-        weight_noz2 = get_fiberid_weights(dat)
-        weight_noz = weight_noz1*weight_noz2
-
-        #-- normalize to overall redshift weight
-        eff_before = np.sum(wgood)/np.sum(wall)
-        eff_after = np.sum(wgood*weight_noz)/np.sum(wall)
-        weight_noz *= 1./eff_after 
+    weight_noz = dat['WEIGHT_NOZ']
 
     #-- plot before/after corrections 
     for field in fields: 
@@ -197,21 +251,12 @@ def plot_failures(dat, weight_noz=None, coeff=None):
         y = ng[w]/na[w]
         #-- purposefully do not recompute errors, should be similar as before
         #-- and the ratio formula doesn't work for corrected counts 
-        #dy = error_of_ratio_poisson(na[w]-ng[w], na[w])
         plt.errorbar(x, y, dy, fmt='.', label=r'With $w_{noz}$')
-
-        #-- plot model for the SPECSN dependency
-        if field=='SPECSN2_I' and coeff is not None:
-            xmodel = np.linspace(x.min(), x.max(), 100)
-            ymodel = get_specsn_efficiency(coeff, xmodel)
-            plt.plot(xmodel, ymodel, label='Best-fit model')
-        
         plt.xlabel(field)
         plt.ylabel('Redshift efficiency')
         plt.legend(loc=0, fontsize=10)
         plt.tight_layout()
 
-    return weight_noz
 
 
 def get_weights_noz(dat):
@@ -229,12 +274,13 @@ def get_weights_noz(dat):
 
     '''
     if 'SPECSN2_I' not in dat.colnames:
-        assign_specsn(dat)
+        assign_specsn2(dat)
     
-    #-- fix dependency with spectro S/N
+    #-- dependency with spectro S/N
     weight_noz1, coeff = get_specsn_weights(dat)
-    #-- fix dependency with FIBERID
-    weight_noz2 = get_fiberid_weights(dat)
+
+    #-- dependency with FIBERID
+    weight_noz2 = get_fiberid_weights(dat, verbose=True)
 
     #-- final weight is simply the product 
     weight_noz = weight_noz1*weight_noz2
@@ -251,6 +297,10 @@ def get_weights_noz(dat):
     dat['WEIGHT_NOZ'] = weight_noz
 
 
+
+dat = Table.read('/mnt/lustre/eboss/DR16_LRG_data/v5/eBOSS_LRG_full_SGC_v5.dat.fits')
+get_weights_noz(dat)
+plot_failures(dat)
 
 
 
