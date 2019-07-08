@@ -7,16 +7,22 @@ Repo containing code to:
 - fit BAO on galaxy correlation function: galaxy_bao_fitter.py
 - reconstruction algorithm based on Burden et al. 2015 : recon.py 
 
-Requirements:
 
-- python 3.6
-- numpy 1.12.1
-- scipy 0.19.0
-- camb 0.1.2
-- astropy 3.0
-- healpy 1.9.1
-
+- camb 
+- astropy 
+- healpy 
 - mangle 3.2 (for catalog generation only)
 - iminuit (for fitter only)
 - pyfftw (for reconstruction only)
+
+In order to use the reconstruction code you need to first compile the cython module. In the root folder of eboss_clustering, please run:
+
+python setup.py build_ext --inplace
+
+If the python/ folder is in your $PYTHONPATH, you should be ready to go. 
+
+
+
+
+
 
