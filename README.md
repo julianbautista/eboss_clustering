@@ -13,8 +13,9 @@ Requirements:
 - astropy 
 - healpy 
 - mangle 3.2 (for catalog generation only)
-- iminuit (for fitter only)
+- iminuit (for BAO fitter only)
 - pyfftw (for reconstruction only)
+- cython (for reconstruction only)
 
 In order to use the reconstruction code you need to first compile the cython module. In the root folder of eboss_clustering, please run:
 
