@@ -7,6 +7,7 @@ Repo containing code to:
 - fit BAO on galaxy correlation function: galaxy_bao_fitter.py
 - reconstruction algorithm based on Burden et al. 2015 : recon.py 
 
+Requirements:
 
 - camb 
 - astropy 
