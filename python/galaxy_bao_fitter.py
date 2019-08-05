@@ -4,6 +4,7 @@ import numpy as np
 import pylab as plt
 import fftlog
 import iminuit
+import sys
 import scipy.interpolate 
 from scipy.optimize import curve_fit
 from scipy.ndimage import gaussian_filter1d
@@ -43,19 +44,23 @@ class Cosmo:
                                    omch2=0.1197, 
                                    YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
                 pars.InitPower.set_params(As=2.198e-09, ns=0.9655)
-            elif name == 'outerim':
+            elif name == 'outerrim':
                 pars.set_cosmology(H0=71., ombh2=0.022584, 
                                    omch2=0.10848, 
                                    YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.0,
                                     num_massive_neutrinos=0)
                 pars.InitPower.set_params(As=2.224615e-09, ns=0.963)
-            elif name == 'EZmock':
+            elif name == 'ezmock':
                 pars.set_cosmology(H0=67.77, ombh2=0.0221399210, 
                                    omch2=0.1189110239, 
                                    YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.0,
                                     num_massive_neutrinos=0)
                 pars.InitPower.set_params(As=2.11622e-09, ns=0.9611)
-            
+            else: 
+                print('Error: name of cosmology should be one of the following')
+                print('challenge qpm planck outerrim ezmock')
+                sys.exit(0)
+ 
                 
 
         pars.set_dark_energy()
@@ -800,8 +805,10 @@ class Chi2:
                              forced_parameters=self.model.pars_names, 
                              print_level=1, errordef=1, 
                              **init_pars)
-        #mig.tol = 10.0 
+        #print(mig.get_param_states())
         imin = mig.migrad()
+        print(mig.get_param_states())
+
         #mig.hesse()
         self.mig = mig
         self.imin = imin

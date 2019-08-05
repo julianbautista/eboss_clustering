@@ -39,7 +39,7 @@ class Recon:
                  data_ra, data_dec, data_z, data_we, \
                  rand_ra, rand_dec, rand_z, rand_we, \
                  bias=2.3, f=0.817, smooth=15., nbins=256, \
-                 padding=200., opt_box=1, nthreads=1):
+                 padding=200., opt_box=1, nthreads=1, omega_m=0.31):
         ''' RA, DEC, Z and WE arrays should all be in np.float64 format
             for fastmodules to work 
         '''
@@ -47,7 +47,7 @@ class Recon:
         beta = f/bias
 
         #-- parameters of box
-        cosmo = Cosmo(OmegaM=0.31)
+        cosmo = Cosmo(OmegaM=omega_m)
         print('Num bins:', nbins)
         print('Smoothing [Mpc/h]:', smooth)
 
