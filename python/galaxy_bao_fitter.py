@@ -6,6 +6,7 @@ import fftlog
 import iminuit
 import sys
 import scipy.interpolate 
+import copy
 from scipy.optimize import curve_fit
 from scipy.ndimage import gaussian_filter1d
 
@@ -272,11 +273,14 @@ class Cosmo:
         self.mu2d = np.tile(self.mu[:, None], (1, self.k.size))
         self.k2d = np.tile(self.k, (self.mu.size, 1))
 
-    def get_2d_power_spectrum(self, pars, ell_max=2, no_peak=0):
+    def get_2d_power_spectrum(self, pars, ell_max=2, no_peak=False, decoupled=False):
 
+        #-- If all parameters are the same as the previous calculation,
+        #-- simply return the same power spectrum (no broadband)
         if hasattr(self, 'pars') and pars==self.pars:
             return self.pk2d_out
 
+        #-- Read alphas and BAO damping terms
         if 'aiso' in pars:
             at = pars['aiso']
             ap = pars['aiso']
@@ -287,7 +291,28 @@ class Cosmo:
             ap = pars['ap']
             Sigma_par = pars['Sigma_par']
             Sigma_per = pars['Sigma_per']
-        
+       
+        #-- Read bias and growth rate / RSD parameter
+        bias = pars['bias']
+        if 'beta' in pars:
+            beta = pars['beta']
+        else:
+            f = pars['f']
+            beta = f/bias
+
+        #-- Read reconstruction damping parameter
+        Sigma_rec = pars['Sigma_rec']
+
+        #-- Read parameters for cross-correlation
+        if 'bias2' in pars:
+            bias2 = pars['bias2']
+        else:
+            bias2 = bias*1.
+        if 'beta2' in pars:    
+            beta2 = pars['beta2']
+        else:
+            beta2 = beta*bias/bias2
+ 
 
         k = self.k
         mu = self.mu
@@ -296,88 +321,80 @@ class Cosmo:
         mu2d = self.mu2d 
         k2d = self.k2d 
    
-        #-- scale k and mu by alphas 
+        #-- Scale k and mu by alphas 
         if 'aiso' in pars:
             ak2d = k2d/at
             amu = mu*1.
         else:
-            #-- this is the correct formula (Beutler et al. 2013)
+            #-- This is the correct formula (Beutler et al. 2013)
             F = ap/at
             ak2d = k2d/at * np.sqrt( 1 + mu2d**2 * (1/F**2 - 1) )
             amu   = mu/F  * np.sqrt( 1 + mu**2   * (1/F**2 - 1) )**(-1) 
 
-        #-- This has shape = (nmu, nk) 
-        amu2d = np.broadcast_to( amu, (k.size, amu.size)).T 
 
+        #-- Sideband model (no BAO peak)
+        #apk2d_s = np.interp(ak2d, self.k, self.pk_sideband, left=0, right=0)
+        #apk2d_s = np.interp(ak2d, self.k, self.pk_sideband)
+        pk2d_s = np.interp(k, self.k, self.pk_sideband)
 
-        bias = pars['bias']
-        if 'beta' in pars:
-            beta = pars['beta']
-            fit_beta = True
+        if no_peak:
+            pk2d_out = np.outer(np.ones_like(mu), pk2d_s)
         else:
-            f = pars['f']
-            fit_beta = False
+            #-- Anisotropic damping applied to BAO peak only
+            #sigma_v2 = (1-amu**2)*Sigma_per**2/2+ amu**2*Sigma_par**2/2 
+            #apk2d = np.interp(ak2d, self.k, self.pk)
+            #pk2d_out = ( (apk2d - apk2d_s)*np.exp(-ak2d**2*sigma_v2[:, None]) + apk2d_s)
+            sigma_v2 = (1-mu**2)*Sigma_per**2/2+ mu**2*Sigma_par**2/2 
+            sigma_v2_k2 = np.outer(sigma_v2, k**2)
+            apk2d   = np.interp(ak2d, self.k, self.pk)#, left=0, right=0)
+            apk2d_s = np.interp(ak2d, self.k, self.pk_sideband)#, left=0, right=0)
+            #apk2d = np.interp(ak2d, self.k, self.pk)
+            pk2d_out = (apk2d - apk2d_s)*np.exp(-sigma_v2_k2)
+            if decoupled:
+                pk2d_out += pk2d_s
+            else:
+                pk2d_out += apk2d_s
 
-        Sigma_rec = pars['Sigma_rec']
 
-        #-- dealing with cross-correlation
-        if 'bias2' in pars:
-            bias2 = pars['bias2']
-            if fit_beta:
-                beta2 = pars['beta2']
-        else:
-            bias2 = bias*1.
-            #f2 = f*1.
-            beta2 = beta*1.
-
-        #-- linear Kaiser redshift space distortions with reconstruction damping
+        
+        #-- Compute Kaiser redshift space distortions with reconstruction damping
         if Sigma_rec == 0:
-            if fit_beta:
-                Kaiser = bias*bias2*(1+beta*amu2d**2)*(1+beta2*amu2d**2)
-            else:
-                Kaiser = (bias+f*amu2d**2)*(bias2+f*amu2d**2)
+            #kaiser = bias*bias2*(1+beta*amu2d**2)*(1+beta2*amu2d**2)
+            recon_damp = np.ones(k.size)
         else:
-            if fit_beta:
-                Kaiser = bias*bias2*\
-                         (1+beta *(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2) * \
-                         (1+beta2*(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2)
-            else:
-                Kaiser = (bias +f *(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2) * \
-                         (bias2+f *(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2)
+            #kaiser = bias*bias2*\
+            #         (1+beta *(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2) * \
+            #         (1+beta2*(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2)
+            recon_damp = 1 - np.exp(-k**2*Sigma_rec**2/2) #-- nk size
+        
+        recon_damp_mu2 = np.outer(mu**2, recon_damp)
+        kaiser = bias * bias2 * (1+beta*recon_damp_mu2) * (1+beta2*recon_damp_mu2)
 
         #-- Fingers of God
         if pars['Sigma_s'] != 0:
-            Dnl = 1./( 1 + ak2d**2*amu2d**2*pars['Sigma_s']**2/2)
+            #dnl = 1./( 1 + ak2d**2*amu2d**2*pars['Sigma_s']**2/2)
+            dnl = 1./( 1 + np.outer(mu**2, k**2)*pars['Sigma_s']**2/2)
         else:
-            Dnl = 1
+            dnl = 1
 
-        #-- Sideband model (no BAO peak)
-        apk2d_s = np.interp(ak2d, self.k, self.pk_sideband)
-
-        if no_peak:
-            pk2d_out = apk2d_s
-        else:
-            #-- Anisotropic damping applied to BAO peak only
-            sigma_v2 = (1-amu**2)*Sigma_per**2/2+ amu**2*Sigma_par**2/2 
-            apk2d = np.interp(ak2d, self.k, self.pk)
-            pk2d_out = ( (apk2d - apk2d_s)*np.exp(-ak2d**2*sigma_v2[:, None]) + apk2d_s)
-
-        #-- this parameters is for intensity mapping only
+        #-- This parameters is for intensity mapping only
         if 'beam' in pars:
-            pk2d_out *= np.exp( -ak2d**2*pars['beam']**2*(1-amu2d**2)/2) 
+            #pk2d_out *= np.exp( -ak2d**2*pars['beam']**2*(1-amu2d**2)/2) 
+            pk2d_out *= np.exp( - pars['beam']**2*np.outer(1-mu**2, k**2)/2) 
         
-        pk2d_out *= Kaiser
-        pk2d_out *= Dnl**2 
-        pk2d_out /= (at**2*ap)
-
-        #-- this parameters is for intensity mapping only
+        #-- This parameters is for intensity mapping only
         if 'THI' in pars:
             pk2d_out *= pars['THI']
+        
+        pk2d_out *= kaiser
+        pk2d_out *= dnl**2 
 
-        self.amu2d = amu2d
+        if not decoupled:
+            pk2d_out /= (at**2*ap)
+
         self.ak2d = ak2d
         self.pk2d_out = pk2d_out
-        self.pars = pars
+        self.pars = copy.deepcopy(pars)
 
         return pk2d_out
 
@@ -416,10 +433,10 @@ class Cosmo:
 
         return rout, np.array(xi_mult)
 
-    def get_xi_multipoles(self, rout, pars, ell_max=4, no_peak=False, r0=1.):
+    def get_xi_multipoles(self, rout, pars, ell_max=4, decoupled=False, no_peak=False, r0=1.):
 
         pk2d = self.get_2d_power_spectrum(pars, 
-                            ell_max=ell_max, no_peak=no_peak)
+                            ell_max=ell_max, no_peak=no_peak, decoupled=decoupled)
         pk_mult = self.get_pk_multipoles(self.mu2d, pk2d, ell_max=ell_max)
         r, xi_out = self.get_xi_multipoles_from_pk(self.k, pk_mult, 
                         output_r=rout, r0=r0)
@@ -436,7 +453,8 @@ class Cosmo:
                             'bias': 1.0, 'beta': 0.6, 
                             'Sigma_par': 10., 'Sigma_per': 6., 
                             'Sigma_s': 4., 'Sigma_rec': 0.},
-             rmin=1., rmax=200., scale_r=2, ell_max=4, figsize=(6, 8)):
+             rmin=1., rmax=200., scale_r=2, ell_max=4, 
+             decoupled=False, no_peak=False, figsize=(6, 8)):
 
         r = np.linspace(rmin, rmax, 2000)
         cosmo = Cosmo(z=z, name='planck')
@@ -444,64 +462,67 @@ class Cosmo:
         lss = ['-', '--', ':', '-.']
 
         if 'aiso' in pars_to_test:
-            plt.figure(figsize=figsize)
-            pars = pars_center.copy()
+            pars = copy.deepcopy(pars_center)
+            fig, ax = plt.subplots(nrows=nell, ncols=1, figsize=figsize)
             for i, ap in enumerate(pars_to_test['aiso']):
                 pars['at'] = ap
                 pars['ap'] = ap
                 aiso = ap
-                xi_mult = cosmo.get_xi_multipoles(r, pars, ell_max=ell_max)
+                xi_mult = cosmo.get_xi_multipoles(r, pars, ell_max=ell_max, 
+                                decoupled=decoupled, no_peak=no_peak)
                 for j in range(nell):
-                    plt.subplot(nell, 1, j+1)
-                    plt.plot(r, xi_mult[j]*r**scale_r, 
+                    ax[j].plot(r, xi_mult[j]*r**scale_r, 
                              ls=lss[i], color='k', lw=2, \
                              label=r'$\alpha_{\rm iso} = %.2f$'%aiso)
                     ylabel = r'$\xi_{%d}$'%(j*2)
                     if scale_r:
-                        ylabel+= r'$r^%d [h^{-%d} \mathrm{Mpc}^{%d}]$'%(scale_r, scale_r, scale_r)
-                    plt.ylabel(ylabel)
-            plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
-            plt.legend(loc=0, fontsize=10)
+                        ylabel+= r'$r^%d [h^{-%d} \mathrm{Mpc}^{%d}]$'%\
+                                   (scale_r, scale_r, scale_r)
+                    ax[j].set_ylabel(ylabel)
+            ax[-1].set_xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
+            ax[0].legend(loc=0, fontsize=10)
             plt.tight_layout()
 
         if 'epsilon' in pars_to_test: 
-            plt.figure(figsize=figsize)
-            pars = pars_center.copy()
+            pars = copy.deepcopy(pars_center)
+            fig, ax = plt.subplots(nrows=nell, ncols=1, figsize=figsize)
             for i, ap in enumerate(pars_to_test['epsilon']):
                 pars['at'] = 1./np.sqrt(ap)
                 pars['ap'] = ap
                 epsilon = (ap*np.sqrt(ap))**(1./3)-1
-                xi_mult = cosmo.get_xi_multipoles(r, pars)
+                xi_mult = cosmo.get_xi_multipoles(r, pars, ell_max=ell_max,
+                                decoupled=decoupled, no_peak=no_peak)
                 for j in range(nell):
-                    plt.subplot(nell, 1, j+1)
-                    plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
+                    ax[j].plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
                            label=r'$\epsilon = %.3f$'%epsilon)
                     ylabel = r'$\xi_{%d}$'%(j*2)
                     if scale_r:
-                        ylabel+= r'$r^%d [h^{-%d} \mathrm{Mpc}^{%d}]$'%(scale_r, scale_r, scale_r)
-                    plt.ylabel(ylabel)
-            plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
-            plt.legend(loc=0, fontsize=10)
+                        ylabel+= r'$r^%d [h^{-%d} \mathrm{Mpc}^{%d}]$'%\
+                                   (scale_r, scale_r, scale_r)
+                    ax[j].set_ylabel(ylabel)
+            ax[-1].set_xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
+            ax[0].legend(loc=0, fontsize=10)
             plt.tight_layout()
 
         for par in pars_to_test:
             if par == 'aiso' or par == 'epsilon': continue
-            plt.figure(figsize=figsize)
-            pars = pars_center.copy()
+            pars = copy.deepcopy(pars_center)
             values = pars_to_test[par]
+            fig, ax = plt.subplots(nrows=nell, ncols=1, figsize=figsize)
             for i, val in enumerate(values):
                 pars[par] = val
-                xi_mult = cosmo.get_xi_multipoles(r, pars)
+                xi_mult = cosmo.get_xi_multipoles(r, pars, ell_max=ell_max,
+                                decoupled=decoupled, no_peak=no_peak)
                 for j in range(nell):
-                    plt.subplot(nell, 1, j+1)
-                    plt.plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
+                    ax[j].plot(r, xi_mult[j]*r**scale_r, ls=lss[i], color='k', lw=2, \
                            label=f'{par} = {val:.3f}')
                     ylabel = r'$\xi_{%d}$'%(j*2)
                     if scale_r:
-                        ylabel+= r'$r^%d [h^{-%d} \mathrm{Mpc}^{%d}]$'%(scale_r, scale_r, scale_r)
-                    plt.ylabel(ylabel)
-            plt.xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
-            plt.legend(loc=0, fontsize=10)
+                        ylabel+= r'$r^%d [h^{-%d} \mathrm{Mpc}^{%d}]$'%\
+                                   (scale_r, scale_r, scale_r)
+                    ax[j].set_ylabel(ylabel)
+            ax[-1].set_xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
+            ax[-1].legend(loc=0, fontsize=10)
             plt.tight_layout() 
 
     @staticmethod 
@@ -552,7 +573,10 @@ class Data:
         
         ncf = cf.size
         ncov = coss.shape[0]
-        print(r.size, ncf, ncov)
+        
+        print(' Size r:', r.size) 
+        print(' Size cf:', ncf)
+        print(' Size cov:', ncov)
        
         if ncf > ncov or ncov % mono.size > 0:
             print('Problem: covariance shape is not compatible '+
@@ -582,7 +606,7 @@ class Model:
 
     def __init__(self, name='challenge', z = 0, 
                  fit_broadband=True, bb_min=-2, bb_max=0, 
-                 norm_pk=False, non_linear=False, no_peak=False,
+                 norm_pk=False, non_linear=False, no_peak=False, decoupled=False,
                  fit_quad=False, fit_hexa=False,
                  fit_iso=False, 
                  fit_beta=False, fit_cross=False, 
@@ -652,6 +676,7 @@ class Model:
         self.fit_broadband = fit_broadband
         self.fit_quad = fit_quad
         self.no_peak = no_peak
+        self.decoupled = decoupled
         self.fit_cross = fit_cross
         self.fit_beam = fit_beam
         self.fit_beta = fit_beta
@@ -663,7 +688,8 @@ class Model:
 
         ell_max = 0 + 2*(self.fit_quad) + 2*(self.fit_hexa)
         cf_out = self.cosmo.get_xi_multipoles(rout,  pars, 
-                            ell_max=ell_max, no_peak=self.no_peak)
+                            ell_max=ell_max, no_peak=self.no_peak,
+                            decoupled=self.decoupled)
         return cf_out.ravel()
 
     def get_broadband(self, rout, pars):
@@ -732,7 +758,7 @@ class Chi2:
 
         self.model = Model(fit_broadband=fit_broadband, fit_iso=fit_iso,
                            fit_quad=fit_quad, fit_hexa=fit_hexa, 
-                           no_peak=no_peak, norm_pk=0,
+                           no_peak=no_peak, decoupled=decoupled, norm_pk=0,
                            z=z)
         self.model.cosmo.get_dist_rdrag()
         self.DM_rd = self.model.cosmo.DM_rd

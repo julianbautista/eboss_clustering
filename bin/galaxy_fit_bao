@@ -40,6 +40,8 @@ parser.add_argument('--bb_max', help='Maximum exponent for broadband', \
                     type=int, default=0)
 parser.add_argument('--fit_nopeak', help='Perform a fit without bao peak', \
                     action='store_true', default=False)
+parser.add_argument('--decoupled', help='Apply scaling factors only to BAO peak', \
+                    action='store_true', default=False)
 parser.add_argument('--fit_quad', help='Use quadrupole', \
                     action='store_true', default=False)
 parser.add_argument('--fit_hexa', help='Use hexadecapole', \
@@ -93,13 +95,18 @@ parser.add_argument('--scale_cov', type=float, default=1.0, \
 
 args = parser.parse_args()
 
+
+print('== Galaxy BAO fitter (by Julian Bautista) ==') 
+print('')
+print('Options:')
 argnames = np.sort(np.array([arg for arg in args.__dict__]))
 for arg in argnames:
-    print(arg, ':', args.__dict__[arg])
-
+    print(' -', arg, ':', args.__dict__[arg])
+print('')
 
 
 ##-- Read input multipoles 
+print('Reading data and covariance matrix')
 m = Multipoles(args.input, cute=args.cute, rebin_r=args.rebin_r, shift_r=args.shift_r)
 if not args.fit_quad:
     m.quad= None
@@ -159,13 +166,15 @@ data = Data(m.r, m.mono, m.coss,
 
 
 #-- Initiate model with BAO peak
+print('\nSetting up the model:', args.cosmology)
 model = Model(fit_broadband=args.fit_broadband, 
               fit_quad=args.fit_quad, 
               fit_hexa=args.fit_hexa,
               name=args.cosmology, 
               norm_pk=args.norm_pk, 
               non_linear=args.non_linear_pk, 
-              z=args.z, fit_iso=args.fit_iso, no_peak=0, 
+              z=args.z, fit_iso=args.fit_iso, no_peak=0,
+              decoupled=args.decoupled, 
               fit_cross=args.fit_cross, 
               fit_beam=args.fit_beam,
               fit_amp=args.fit_amp,
@@ -173,6 +182,7 @@ model = Model(fit_broadband=args.fit_broadband,
               bb_min=args.bb_min, bb_max=args.bb_max)
 
 #-- Perform fit and export
+print('\nStarting chi2 minimization')
 sec0 = time.time()
 chi2 = Chi2(data=data, model=model)
 chi2.fit(fixes=fixes, priors=priors, limits=limits) 
@@ -189,6 +199,7 @@ if args.fit_nopeak:
                          fit_quad=args.fit_quad,
                          fit_hexa=args.fit_hexa,
                          name=args.cosmology, norm_pk=args.norm_pk, 
+                         decoupled=args.decoupled, 
                          non_linear=args.non_linear_pk, 
                          z=args.z, fit_iso=args.fit_iso, fit_beta=args.fit_beta, no_peak=1)  
     chi2_nopeak = Chi2(data=data, model=model_nopeak)
@@ -202,7 +213,7 @@ if args.fit_nopeak:
 if args.minos:
     sec2 = time.time()
     for par in args.minos:
-        print('Performing minos for', par)
+        print('\nPerforming minos for', par)
         minos = chi2.mig.minos(var=par)
         fout = open(output+'.%s.minos'%par, 'w')
         val = minos[par]['min']
@@ -221,6 +232,7 @@ if args.minos:
 if args.scan:
     sec3 = time.time()
     for i in range(0, len(args.scan), 4):
+        print('\nPerforming scan of chi2 for', par)
         par = args.scan[i]
         low = float(args.scan[i+1])
         upp = float(args.scan[i+2])
@@ -264,6 +276,7 @@ if args.scan2d:
     sec4 = time.time()
     for i in range(0, len(args.scan2d), 8):
         par_names = [args.scan2d[i], args.scan2d[i+4]]
+        print('\nPerforming scan of chi2 for', par_names[0], par_names[1])
         low = [float(args.scan2d[i+1]), float(args.scan2d[i+5])]
         upp = [float(args.scan2d[i+2]), float(args.scan2d[i+6])]
         nbin =  [int(args.scan2d[i+3]), int(args.scan2d[i+7])]

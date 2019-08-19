@@ -386,7 +386,7 @@ class Multipoles:
         self.quad = quad
         self.hexa = hexa
 
-    def read_cov(self, cov_file):
+    def read_cov(self, cov_file, scale_cov=1.):
 
         i, _, r1, _, coss = np.loadtxt(cov_file, unpack=1)
         r = np.unique(r1)
@@ -395,7 +395,7 @@ class Multipoles:
             print( 'Warning: covariance matrix is uncompatible with multipoles')
 
         ni = np.unique(i).size
-        coss = np.reshape(coss, (ni, ni))
+        coss = np.reshape(coss, (ni, ni))*scale_cov
         dmono = np.sqrt(np.diag(coss)[:nr])
         if ni>=2*nr:
             dquad = np.sqrt(np.diag(coss)[nr:(2*nr)])
