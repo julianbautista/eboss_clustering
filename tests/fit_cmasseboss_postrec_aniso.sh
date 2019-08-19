@@ -22,8 +22,9 @@ galaxy_fit_bao \
   --limits at 0.5 1.5 ap 0.5 1.5 bias 1.0 4.0 \
   --z 0.72 \
   --scale_cov 0.9753 \
+  --decoupled \
   --plotit 
-  #--minos at ap #\
+#  --minos at ap \
   #--scan2d at 0.8 1.2 40 ap 0.6 1.2 40 #\
   #--priors bias 1.0 0.3 \
 

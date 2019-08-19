@@ -694,7 +694,7 @@ class Model:
 
     def get_broadband(self, rout, pars):
         
-        if hasattr(self, 'pars_bb') and self.pars_bb==pars:
+        if hasattr(self, 'pars_bb') and self.pars_bb==pars and self.bb.size == rout.size:
             return self.bb
   
         monobb = rout*0.
@@ -713,7 +713,7 @@ class Model:
             bb = np.append(bb, quadbb)
         if self.fit_hexa:
             bb = np.append(bb, hexabb)
-        self.pars_bb = pars
+        self.pars_bb = copy.deepcopy(pars)
         self.bb = bb
 
         return bb
