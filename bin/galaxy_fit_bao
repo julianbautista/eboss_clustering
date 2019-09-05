@@ -198,6 +198,13 @@ print(f'Time elapsed during fit: {tmin:.2f} minutes')
 #-- Initiate and perform fit without BAO peak
 if args.fit_nopeak:
     sec1 = time.time()
+    fixes_nopeak = copy.deepcopy(fixes)
+    if args.decoupled:
+        if args.fit_iso:
+            fixes_nopeak['aiso'] = 1
+        else:
+            fixes_nopeak['at'] = 1
+            fixes_nopeak['ap'] = 1
     model_nopeak = Model(fit_broadband=args.fit_broadband, 
                          fit_quad=args.fit_quad,
                          fit_hexa=args.fit_hexa,
@@ -206,7 +213,7 @@ if args.fit_nopeak:
                          non_linear=args.non_linear_pk, 
                          z=args.z, fit_iso=args.fit_iso, fit_beta=args.fit_beta, no_peak=1)  
     chi2_nopeak = Chi2(data=data, model=model_nopeak)
-    chi2_nopeak.fit(fixes=fixes, priors=priors, limits=limits)
+    chi2_nopeak.fit(fixes=fixes_nopeak, priors=priors, limits=limits)
     chi2_nopeak.export(output+'-nopeak.pars')
     sec2 = time.time()
     tmin = (sec2-sec1)/60

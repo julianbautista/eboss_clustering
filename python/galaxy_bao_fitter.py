@@ -286,11 +286,16 @@ class Cosmo:
             ap = pars['aiso']
             Sigma_par = pars['Sigma_NL']
             Sigma_per = pars['Sigma_NL']
-        else:
+        elif 'ap' in pars:
             at = pars['at']
             ap = pars['ap']
             Sigma_par = pars['Sigma_par']
             Sigma_per = pars['Sigma_per']
+        else:
+            at = 1.
+            ap = 1.
+            Sigma_par = 0
+            Sigma_per = 0
        
         #-- Read bias and growth rate / RSD parameter
         bias = pars['bias']
@@ -616,20 +621,20 @@ class Model:
 
         #-- define parameter dictionary
         pars = {}
+        pars_names = []
         
         if fit_iso:
-            pars_names = ['aiso']
+            pars_names += ['aiso']
             pars['aiso'] = 1.0
-            pars_names+= ['Sigma_NL']
+            pars_names += ['Sigma_NL']
             pars['Sigma_NL'] = 6.
         else:
-            pars_names = ['at', 'ap']
+            pars_names += ['at', 'ap']
             pars['at'] = 1.0
             pars['ap'] = 1.0
             pars_names += ['Sigma_per', 'Sigma_par']
             pars['Sigma_per'] = 6.
             pars['Sigma_par'] = 10.
-       
          
         pars_names += ['bias', 'Sigma_s', 'Sigma_rec']
         pars['bias'] = 3.0
