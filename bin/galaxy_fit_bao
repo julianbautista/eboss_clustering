@@ -187,6 +187,9 @@ sec0 = time.time()
 chi2 = Chi2(data=data, model=model)
 chi2.fit(fixes=fixes, priors=priors, limits=limits) 
 chi2.export(output+'.pars')
+chi2.export_covariance(output+'.covpars')
+if not args.fit_iso:
+    print('at-ap correlation coeff:', chi2.get_correlation_coefficient('at', 'ap'))
 sec1 = time.time()
 tmin = (sec1-sec0)/60
 print(f'Time elapsed during fit: {tmin:.2f} minutes')

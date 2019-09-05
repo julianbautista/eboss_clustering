@@ -851,6 +851,19 @@ class Chi2:
         self.rchi2min = self.chi2min/(self.ndata-self.npars)
         print(f'chi2/(ndata-npars) = {self.chi2min:.2f}/({self.ndata}-{self.npars}) = {self.rchi2min:.2f}') 
 
+    def get_correlation_coefficient(self, par_name1, par_name2):
+
+        if not hasattr(self, 'covariance'):
+            print('Chi2 was not yet minimized')
+            return
+        
+        cov = self.covariance
+        var1 = cov[par_name1, par_name1]
+        var2 = cov[par_name2, par_name2]
+        cov12 = cov[par_name1, par_name2]
+        corr_coeff = cov12/np.sqrt(var1*var2)
+        return corr_coeff
+        
 
     def plot_bestfit(self, fig=None, model_only=0, scale_r=2, label=None, figsize=(12, 5)):
 
@@ -1061,6 +1074,13 @@ class Chi2:
             print(p, self.best_pars[p], self.errors[p], file=fout)
         fout.close()
 
+    def export_covariance(self, fout):
 
+        fout = open(fout, 'w')
+        print('par_name1 par_name2 covariance', file=fout)
+        cov = self.covariance
+        for k in cov:
+            print(f'{k[0]} {k[1]} {cov[k]}', file=fout)
+        fout.close()  
 
 
