@@ -569,6 +569,8 @@ class Multipoles:
             cc.hexa = self.hexas[i]
             cc.plot(fig=fig, errors=0, scale_r=scale_r, **kwargs)
 
+        return fig
+
     def export(self, fout):
         r = self.r
         fout = open(fout, 'w')
