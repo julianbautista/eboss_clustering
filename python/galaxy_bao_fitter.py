@@ -104,7 +104,7 @@ class Cosmo:
         return kh, pk[0]
         
     def get_correlation_function(self, k=None, pk=None,  
-                                 Sigma_nl=0., r=None, 
+                                 sigma_nl=0., r=None, 
                                  r0=1., inverse=0):
         ''' This computes isotropic xi(r) from isotropic P(k)
             Currently not used by fitter but useful for tests 
@@ -119,7 +119,7 @@ class Cosmo:
         pklog = np.interp(klog, k, pk)
 
         #-- apply isotropic damping
-        pklog *= np.exp(-0.5*klog**2*Sigma_nl**2)
+        pklog *= np.exp(-0.5*klog**2*sigma_nl**2)
 
         rout, xiout = fftlog.HankelTransform(klog, pklog, 
                                              q=1.5, mu=0.5, 
@@ -243,12 +243,12 @@ class Cosmo:
         plt.xlim(0, 200)
         plt.tight_layout()
 
-    def smooth(self, xi_peak, dr=1., Sigma_nl=4.):
+    def smooth(self, xi_peak, dr=1., sigma_nl=4.):
         ''' Gaussian smoothing
             dr: size of bins of xi_peak
-            Sigma_nl: smoothing length
+            sigma_nl: smoothing length
         '''
-        xi_smooth = gaussian_filter1d(xi_peak, sigma=Sigma_nl/dr)
+        xi_smooth = gaussian_filter1d(xi_peak, sigma=sigma_nl/dr)
         return xi_smooth 
 
     def get_multipoles(self, r, xi, f):
@@ -284,18 +284,18 @@ class Cosmo:
         if 'aiso' in pars:
             at = pars['aiso']
             ap = pars['aiso']
-            Sigma_par = pars['Sigma_NL']
-            Sigma_per = pars['Sigma_NL']
+            sigma_par = pars['sigma_nl']
+            sigma_per = pars['sigma_nl']
         elif 'ap' in pars:
             at = pars['at']
             ap = pars['ap']
-            Sigma_par = pars['Sigma_par']
-            Sigma_per = pars['Sigma_per']
+            sigma_par = pars['sigma_par']
+            sigma_per = pars['sigma_per']
         else:
             at = 1.
             ap = 1.
-            Sigma_par = 0
-            Sigma_per = 0
+            sigma_par = 0
+            sigma_per = 0
        
         #-- Read bias and growth rate / RSD parameter
         bias = pars['bias']
@@ -306,7 +306,7 @@ class Cosmo:
             beta = f/bias
 
         #-- Read reconstruction damping parameter
-        Sigma_rec = pars['Sigma_rec']
+        sigma_rec = pars['sigma_rec']
 
         #-- Read parameters for cross-correlation
         if 'bias2' in pars:
@@ -346,10 +346,10 @@ class Cosmo:
             pk2d_out = np.outer(np.ones_like(mu), pk2d_s)
         else:
             #-- Anisotropic damping applied to BAO peak only
-            #sigma_v2 = (1-amu**2)*Sigma_per**2/2+ amu**2*Sigma_par**2/2 
+            #sigma_v2 = (1-amu**2)*sigma_per**2/2+ amu**2*sigma_par**2/2 
             #apk2d = np.interp(ak2d, self.k, self.pk)
             #pk2d_out = ( (apk2d - apk2d_s)*np.exp(-ak2d**2*sigma_v2[:, None]) + apk2d_s)
-            sigma_v2 = (1-mu**2)*Sigma_per**2/2+ mu**2*Sigma_par**2/2 
+            sigma_v2 = (1-mu**2)*sigma_per**2/2+ mu**2*sigma_par**2/2 
             sigma_v2_k2 = np.outer(sigma_v2, k**2)
             apk2d   = np.interp(ak2d, self.k, self.pk)#, left=0, right=0)
             apk2d_s = np.interp(ak2d, self.k, self.pk_sideband)#, left=0, right=0)
@@ -363,22 +363,22 @@ class Cosmo:
 
         
         #-- Compute Kaiser redshift space distortions with reconstruction damping
-        if Sigma_rec == 0:
+        if sigma_rec == 0:
             #kaiser = bias*bias2*(1+beta*amu2d**2)*(1+beta2*amu2d**2)
             recon_damp = np.ones(k.size)
         else:
             #kaiser = bias*bias2*\
-            #         (1+beta *(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2) * \
-            #         (1+beta2*(1.-np.exp(-ak2d**2*Sigma_rec**2/2))*amu2d**2)
-            recon_damp = 1 - np.exp(-k**2*Sigma_rec**2/2) #-- nk size
+            #         (1+beta *(1.-np.exp(-ak2d**2*sigma_rec**2/2))*amu2d**2) * \
+            #         (1+beta2*(1.-np.exp(-ak2d**2*sigma_rec**2/2))*amu2d**2)
+            recon_damp = 1 - np.exp(-k**2*sigma_rec**2/2) #-- nk size
         
         recon_damp_mu2 = np.outer(mu**2, recon_damp)
         kaiser = bias * bias2 * (1+beta*recon_damp_mu2) * (1+beta2*recon_damp_mu2)
 
         #-- Fingers of God
-        if pars['Sigma_s'] != 0:
-            #dnl = 1./( 1 + ak2d**2*amu2d**2*pars['Sigma_s']**2/2)
-            dnl = 1./( 1 + np.outer(mu**2, k**2)*pars['Sigma_s']**2/2)
+        if pars['sigma_s'] != 0:
+            #dnl = 1./( 1 + ak2d**2*amu2d**2*pars['sigma_s']**2/2)
+            dnl = 1./( 1 + np.outer(mu**2, k**2)*pars['sigma_s']**2/2)
         else:
             dnl = 1
 
@@ -389,7 +389,7 @@ class Cosmo:
         
         #-- This parameters is for intensity mapping only
         if 'THI' in pars:
-            pk2d_out *= pars['THI']
+            pk2d_out *= pars['t_hi']
         
         pk2d_out *= kaiser
         pk2d_out *= dnl**2 
@@ -452,12 +452,12 @@ class Cosmo:
              pars_to_test= {'aiso': [0.95, 1.0, 1.05], 
                             'epsilon': [1.0, 1.0201, 0.9799], 
                             'beta': [0.35, 0.45, 0.25], 
-                            'Sigma_rec': [0, 5, 10],
-                            'Sigma_s': [0, 2, 4]},
+                            'sigma_rec': [0, 5, 10],
+                            'sigma_s': [0, 2, 4]},
              pars_center = {'ap': 1.0, 'at': 1.0, 
                             'bias': 1.0, 'beta': 0.6, 
-                            'Sigma_par': 10., 'Sigma_per': 6., 
-                            'Sigma_s': 4., 'Sigma_rec': 0.},
+                            'sigma_par': 10., 'sigma_per': 6., 
+                            'sigma_s': 4., 'sigma_rec': 0.},
              rmin=1., rmax=200., scale_r=2, ell_max=4, 
              decoupled=False, no_peak=False, figsize=(6, 8)):
 
@@ -536,8 +536,8 @@ class Cosmo:
         Cosmo.test(z=0.35, 
                    pars_to_test={'epsilon': [1.0, 1.0201, 0.9799]}, 
                    pars_center={'ap': 1.0, 'at': 1.0, 'bias': 2.2, 'beta': 0.35, 
-                                'Sigma_par': 0.0, 'Sigma_per': .0, 'Sigma_s': 0, 
-                                'Sigma_rec': 0.0})
+                                'sigma_par': 0.0, 'sigma_per': .0, 'sigma_s': 0, 
+                                'sigma_rec': 0.0})
          
 
     def get_dist_rdrag(self):
@@ -626,20 +626,20 @@ class Model:
         if fit_iso:
             pars_names += ['aiso']
             pars['aiso'] = 1.0
-            pars_names += ['Sigma_NL']
-            pars['Sigma_NL'] = 6.
+            pars_names += ['sigma_NL']
+            pars['sigma_NL'] = 6.
         else:
             pars_names += ['at', 'ap']
             pars['at'] = 1.0
             pars['ap'] = 1.0
-            pars_names += ['Sigma_per', 'Sigma_par']
-            pars['Sigma_per'] = 6.
-            pars['Sigma_par'] = 10.
+            pars_names += ['sigma_per', 'sigma_par']
+            pars['sigma_per'] = 6.
+            pars['sigma_par'] = 10.
          
-        pars_names += ['bias', 'Sigma_s', 'Sigma_rec']
+        pars_names += ['bias', 'sigma_s', 'sigma_rec']
         pars['bias'] = 3.0
-        pars['Sigma_s'] = 4.
-        pars['Sigma_rec'] = 15.
+        pars['sigma_s'] = 4.
+        pars['sigma_rec'] = 15.
         
         if fit_beta:
             pars['beta'] = 0.3
@@ -656,8 +656,8 @@ class Model:
                 pars['beta2'] = 0.5
 
         if fit_amp:
-            pars['THI'] = 0.3e-3
-            pars_names += ['THI']
+            pars['t_hi'] = 0.3e-3
+            pars_names += ['t_hi']
 
         if fit_beam:
             pars_names += ['beam']

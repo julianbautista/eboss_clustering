@@ -1,0 +1,279 @@
+#!/usr/bin/env python
+
+import sys
+import argparse
+import configparser
+import os
+import numpy as np 
+import time
+
+from galaxy_bao_fitter import *
+from cf_tools import Multipoles
+
+parser = argparse.ArgumentParser()
+parser.add_argument('ini', help='Configuration file for fit')
+args = parser.parse_args()
+config = configparser.ConfigParser()
+config.read(args.ini)
+
+
+print('== Galaxy BAO fitter (by Julian Bautista) ==') 
+print('')
+
+
+##-- Read input multipoles 
+print('Reading data and covariance matrix')
+m = Multipoles(config['data']['name'])
+z_eff = float(config['data']['z_eff'])
+
+options = {}
+for k in config['options']:
+    options[k] = config['options'][k] == 'True'
+
+if not options['fit_quad']:
+    m.quad = None
+if not options['fit_hexa']:
+    m.hexa = None
+
+#-- Read covariance matrix
+m.read_cov(config['covariance']['name'])
+m.coss *= float(config['covariance']['scalefactor'])
+nmocks = int(config['covariance']['nmocks'])
+
+#-- Define output name
+rmin = float(config['cuts']['rmin'])
+rmax = float(config['cuts']['rmax'])
+
+output = ''.join([
+        config['data']['output'],
+        f'-rmin{rmin:.1f}-rmax{rmax:.1f}',
+        '-bb'  *(options['fit_broadband']),
+        '-quad'*(options['fit_quad']),
+        '-hexa'*(options['fit_hexa']),
+        '-iso' *(options['fit_iso']) 
+        ])
+output_base = os.path.basename(output)
+
+
+#-- Define fixed parameters, priors and limits
+fixes = config['fixes']
+if fixes:
+    fixes_dict = {}
+    for k in fixes:
+        fixes_dict[k] = float(fixes[k])
+    fixes=fixes_dict
+else:
+    fixes={}
+
+priors = config['priors']
+if priors:
+    priors_dict = {}
+    for k in priors: 
+        boundaries = np.array(priors[k].split()).astype(float)
+        priors_dict[k] = boundaries 
+    priors = priors_dict
+else:
+    priors={}
+
+limits = config['limits']
+if limits:
+    limits_dict = {}
+    for k in limits: 
+        boundaries = np.array(limits[k].split()).astype(float)
+        limits_dict[k] = boundaries 
+    limits = limits_dict
+else:
+    limits={}
+
+
+
+
+#-- Define data, cutting over rmin,rmax 
+data = Data(m.r, m.mono, m.coss, 
+            quad=m.quad, hexa=m.hexa, 
+            nmocks=nmocks, rmax=rmax, rmin=rmin)
+
+
+#-- Initiate model with BAO peak
+cosmology     = config['model']['cosmology']
+norm_pk       = config['model']['norm_pk'] == 'True'
+non_linear_pk = config['model']['non_linear_pk'] == 'True'
+decoupled     = config['model']['decoupled'] == 'True'
+
+bb_min = int(config['broadband']['bb_min'])
+bb_max = int(config['broadband']['bb_max'])
+
+print('')
+print('Setting up the model:', cosmology)
+model = Model(fit_broadband = options['fit_broadband'], 
+              fit_quad      = options['fit_quad'], 
+              fit_hexa      = options['fit_hexa'],
+              fit_cross     = options['fit_cross'], 
+              fit_beam      = options['fit_beam'],
+              fit_amp       = options['fit_amp'],
+              fit_beta      = options['fit_beta'],
+              fit_iso       = options['fit_iso'], 
+              name       = cosmology, 
+              norm_pk    = norm_pk, 
+              non_linear = non_linear_pk, 
+              decoupled = decoupled, 
+              z = z_eff, 
+              no_peak = False,
+              bb_min=bb_min, bb_max=bb_max)
+
+#-- Perform fit and export
+print('\nStarting chi2 minimization')
+sec0 = time.time()
+chi2 = Chi2(data=data, model=model)
+chi2.fit(fixes=fixes, priors=priors, limits=limits) 
+chi2.export(output+'.pars')
+sec1 = time.time()
+tmin = (sec1-sec0)/60
+print(f'Time elapsed during fit: {tmin:.2f} minutes')
+
+
+#-- Initiate and perform fit without BAO peak
+if options['fit_nopeak']:
+    sec1 = time.time()
+    fixes_nopeak = copy.deepcopy(fixes)
+    if decoupled:
+        if options['fit_iso']:
+            fixes_nopeak['aiso'] = 1
+        else:
+            fixes_nopeak['at'] = 1
+            fixes_nopeak['ap'] = 1
+    model_nopeak = Model( fit_broadband = options['fit_broadband'], 
+                          fit_quad      = options['fit_quad'], 
+                          fit_hexa      = options['fit_hexa'],
+                          fit_cross     = options['fit_cross'], 
+                          fit_beam      = options['fit_beam'],
+                          fit_amp       = options['fit_amp'],
+                          fit_beta      = options['fit_beta'],
+                          fit_iso       = options['fit_iso'], 
+                          name       = cosmology, 
+                          norm_pk    = norm_pk, 
+                          non_linear = non_linear_pk, 
+                          decoupled = decoupled, 
+                          z = z_eff, 
+                          no_peak = True,
+                          bb_min = bb_min, 
+                          bb_max = bb_max)
+    chi2_nopeak = Chi2(data=data, model=model_nopeak)
+    chi2_nopeak.fit(fixes=fixes_nopeak, priors=priors, limits=limits)
+    chi2_nopeak.export(output+'-nopeak.pars')
+    sec2 = time.time()
+    tmin = (sec2-sec1)/60
+    print(f'Time elapsed during fit of no peak: {tmin:.2f} minutes')
+
+#-- Get assymetric error bars
+if 'minos' in config:
+    sec2 = time.time()
+    for par in config['minos']['parameters'].split():
+        print('\nPerforming minos for', par)
+        minos = chi2.mig.minos(var=par)
+        fout = open(output+'.%s.minos'%par, 'w')
+        val = minos[par]['min']
+        low = minos[par]['lower']
+        upp = minos[par]['upper']
+        err = 0.5*(-low+upp)
+        print(f'{par} = {val:.4f} +/- {err:.4f}') 
+        print(par, val, low, upp, minos[par]['is_valid'], file=fout)
+        fout.close()
+
+    sec3 = time.time()
+    tmin = (sec3-sec2)/60
+    print(f'Time elapsed during minos: {tmin:.2f} minutes')
+
+#-- Perform one dimensional scans of chi2
+if 'scan' in config:
+    sec3 = time.time()
+    scan = config['scan']
+    for par in scan: 
+        print('\nPerforming scan of chi2 for', par)
+        opt = scan[par].split()
+        low = float(opt[0])
+        upp = float(opt[1])
+        nbin =  int(opt[2])
+        par_scan, chi2_scan = \
+            chi2.scan(par_name=par, par_nsteps=nbin, par_min=low, par_max=upp)
+
+        #-- chi2 scans
+        fout = open(output+f'.{par}.scan', 'w')
+        print(chi2.best_pars[par], chi2.chi2min, file=fout)
+        for i in range(par_scan.size):
+            print( par_scan[i], chi2_scan[i], file=fout)
+        fout.close()
+        print('chi2 scan exported to:', output+f'.{par}.scan')
+
+    sec4 = time.time()
+    tmin = (sec4-sec3)/60
+    print(f'Time elapsed during scan1d: {tmin:.2f} minutes')
+
+
+#-- Perform one dimensional scans of chi2 for no peak model
+if 'scan_nopeak' in config:
+    for i in range(0, len(args.scan_nopeak), 4):
+        par = args.scan_nopeak[i]
+        low = float(args.scan_nopeak[i+1])
+        upp = float(args.scan_nopeak[i+2])
+        nbin =  int(args.scan_nopeak[i+3])
+        par_scan_nopeak, chi2_scan_nopeak = \
+            chi2_nopeak.scan(par_name=par, par_nsteps=nbin, par_min=low, par_max=upp)
+
+        #-- chi2 scans
+        fout = open(output+'-nopeak.%s.scan'%par, 'w')
+        print(chi2_nopeak.best_pars[par], chi2_nopeak.chi2min, file=fout)
+        for i in range(par_scan_nopeak.size):
+            print(par_scan_nopeak[i], chi2_scan_nopeak[i], file=fout)
+        fout.close()
+
+
+#-- Perform two dimensional scans of chi2
+if 'scan2d' in config:
+    sec4 = time.time()
+    scan = config['scan2d']
+    for pars in scan:
+        par_names = pars.split() 
+        print('\nPerforming scan of chi2 for', par_names[0], par_names[1])
+        values = scan[pars].split()
+        low = [float(values[0]), float(values[3])]
+        upp = [float(values[1]), float(values[4])]
+        nbin =  [int(values[2]),   int(values[5])]
+        par_scan0, par_scan1, chi2_scan = \
+            chi2.scan_2d(par_names=par_names, par_nsteps=nbin, par_min=low, par_max=upp)
+
+        filename = output+'.%s.%s.scan2d'%(par_names[0], par_names[1])
+        fout = open(filename, 'w')
+        print( chi2.best_pars[par_names[0]], \
+               chi2.best_pars[par_names[1]], \
+               chi2.chi2min, file=fout)
+        for i in range(par_scan0.size):
+            for j in range(par_scan1.size):
+                print(par_scan0[i], par_scan1[j], chi2_scan[i, j], file=fout)
+        fout.close()
+        print('chi2 scan exported to:', filename)
+
+    sec5 = time.time()
+    tmin = (sec5-sec4)/60
+    print(f'Time elapsed during scan2d: {tmin:.2f} minutes')
+
+
+if 'plot' in config:
+    scale_r = int(config['plot']['scale_r'])
+    fig = chi2.plot_bestfit(label=r'$\chi^2 = %.2f$'%chi2.chi2min, scale_r=scale_r)
+    if options['fit_nopeak']:
+        fig = chi2_nopeak.plot_bestfit(fig=fig, model_only=1, scale_r=scale_r, 
+                label=r'$\chi^2_{\rm no \ peak} = %.2f$'%chi2_nopeak.chi2min)
+    plt.legend(loc=0)
+    plt.tight_layout()
+    if 'save' in config['plot']:
+        plt.savefig(config['plot']['save'], bbox_inches='tight')
+    plt.show()
+
+
+
+
+
+
+
+
