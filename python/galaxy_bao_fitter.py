@@ -270,8 +270,8 @@ class Cosmo:
     def set_2d_arrays(self, nmu=201):
 
         self.mu = np.linspace(0, 1., nmu)
-        self.mu2d = np.tile(self.mu[:, None], (1, self.k.size))
-        self.k2d = np.tile(self.k, (self.mu.size, 1))
+        self.mu2d = np.outer(self.mu, np.ones(self.k.size))
+        self.k2d  = np.outer(np.ones(nmu), self.k)
 
     def get_2d_power_spectrum(self, pars, ell_max=2, no_peak=False, decoupled=False):
 
@@ -321,7 +321,9 @@ class Cosmo:
 
         k = self.k
         mu = self.mu
-        
+        pk = self.pk
+        pk_sideband = self.pk_sideband
+
         #-- These have shape = (nmu, nk) 
         mu2d = self.mu2d 
         k2d = self.k2d 
@@ -331,45 +333,33 @@ class Cosmo:
             ak2d = k2d/at
             amu = mu*1.
         else:
-            #-- This is the correct formula (Beutler et al. 2013)
+            #-- This is the correct formula (Eq. 58 and 59 from Beutler et al. 2014)
             F = ap/at
             ak2d = k2d/at * np.sqrt( 1 + mu2d**2 * (1/F**2 - 1) )
-            amu   = mu/F  * np.sqrt( 1 + mu**2   * (1/F**2 - 1) )**(-1) 
+            amu  = mu/F   / np.sqrt( 1 + mu**2   * (1/F**2 - 1) )
 
 
         #-- Sideband model (no BAO peak)
-        #apk2d_s = np.interp(ak2d, self.k, self.pk_sideband, left=0, right=0)
-        #apk2d_s = np.interp(ak2d, self.k, self.pk_sideband)
-        pk2d_s = np.interp(k, self.k, self.pk_sideband)
+        if decoupled:
+            pk2d_s = np.outer(np.ones_like(mu), pk_sideband)
+        else:
+            pk2d_s = np.interp(ak2d, k, pk_sideband)
 
         if no_peak:
-            pk2d_out = np.outer(np.ones_like(mu), pk2d_s)
+            pk2d_out = pk2d_s 
         else:
             #-- Anisotropic damping applied to BAO peak only
-            #sigma_v2 = (1-amu**2)*sigma_per**2/2+ amu**2*sigma_par**2/2 
-            #apk2d = np.interp(ak2d, self.k, self.pk)
-            #pk2d_out = ( (apk2d - apk2d_s)*np.exp(-ak2d**2*sigma_v2[:, None]) + apk2d_s)
             sigma_v2 = (1-mu**2)*sigma_per**2/2+ mu**2*sigma_par**2/2 
             sigma_v2_k2 = np.outer(sigma_v2, k**2)
-            apk2d   = np.interp(ak2d, self.k, self.pk)#, left=0, right=0)
-            apk2d_s = np.interp(ak2d, self.k, self.pk_sideband)#, left=0, right=0)
-            #apk2d = np.interp(ak2d, self.k, self.pk)
-            pk2d_out = (apk2d - apk2d_s)*np.exp(-sigma_v2_k2)
-            if decoupled:
-                pk2d_out += pk2d_s
-            else:
-                pk2d_out += apk2d_s
-
+            apk2d_peak = np.interp(ak2d, k, pk-pk_sideband)
+            pk2d_out  = apk2d_peak * np.exp(-sigma_v2_k2)
+            pk2d_out += pk2d_s
 
         
         #-- Compute Kaiser redshift space distortions with reconstruction damping
         if sigma_rec == 0:
-            #kaiser = bias*bias2*(1+beta*amu2d**2)*(1+beta2*amu2d**2)
             recon_damp = np.ones(k.size)
         else:
-            #kaiser = bias*bias2*\
-            #         (1+beta *(1.-np.exp(-ak2d**2*sigma_rec**2/2))*amu2d**2) * \
-            #         (1+beta2*(1.-np.exp(-ak2d**2*sigma_rec**2/2))*amu2d**2)
             recon_damp = 1 - np.exp(-k**2*sigma_rec**2/2) #-- nk size
         
         recon_damp_mu2 = np.outer(mu**2, recon_damp)
@@ -377,14 +367,12 @@ class Cosmo:
 
         #-- Fingers of God
         if pars['sigma_s'] != 0:
-            #dnl = 1./( 1 + ak2d**2*amu2d**2*pars['sigma_s']**2/2)
             dnl = 1./( 1 + np.outer(mu**2, k**2)*pars['sigma_s']**2/2)
         else:
             dnl = 1
 
         #-- This parameters is for intensity mapping only
         if 'beam' in pars:
-            #pk2d_out *= np.exp( -ak2d**2*pars['beam']**2*(1-amu2d**2)/2) 
             pk2d_out *= np.exp( - pars['beam']**2*np.outer(1-mu**2, k**2)/2) 
         
         #-- This parameters is for intensity mapping only
@@ -394,8 +382,8 @@ class Cosmo:
         pk2d_out *= kaiser
         pk2d_out *= dnl**2 
 
-        if not decoupled:
-            pk2d_out /= (at**2*ap)
+        #if not decoupled:
+        #pk2d_out /= (at**2*ap)
 
         self.ak2d = ak2d
         self.pk2d_out = pk2d_out
@@ -445,6 +433,8 @@ class Cosmo:
         pk_mult = self.get_pk_multipoles(self.mu2d, pk2d, ell_max=ell_max)
         r, xi_out = self.get_xi_multipoles_from_pk(self.k, pk_mult, 
                         output_r=rout, r0=r0)
+        self.xi_out = xi_out*1
+
         return xi_out
 
     @staticmethod
@@ -459,10 +449,11 @@ class Cosmo:
                             'sigma_par': 10., 'sigma_per': 6., 
                             'sigma_s': 4., 'sigma_rec': 0.},
              rmin=1., rmax=200., scale_r=2, ell_max=4, 
-             decoupled=False, no_peak=False, figsize=(6, 8)):
+             decoupled=False, no_peak=False, non_linear_pk=False,
+             figsize=(6, 8)):
 
         r = np.linspace(rmin, rmax, 2000)
-        cosmo = Cosmo(z=z, name='planck')
+        cosmo = Cosmo(z=z, name='planck', non_linear=non_linear_pk)
         nell = ell_max//2+1
         lss = ['-', '--', ':', '-.']
 
@@ -626,8 +617,8 @@ class Model:
         if fit_iso:
             pars_names += ['aiso']
             pars['aiso'] = 1.0
-            pars_names += ['sigma_NL']
-            pars['sigma_NL'] = 6.
+            pars_names += ['sigma_nl']
+            pars['sigma_nl'] = 6.
         else:
             pars_names += ['at', 'ap']
             pars['at'] = 1.0
@@ -698,8 +689,7 @@ class Model:
         return cf_out.ravel()
 
     def get_broadband(self, rout, pars):
-        
-        if hasattr(self, 'pars_bb') and self.pars_bb==pars and self.bb.size == rout.size:
+        if hasattr(self, 'pars_bb') and self.pars_bb==pars and self.bb.size % rout.size == 0:
             return self.bb
   
         monobb = rout*0.
@@ -707,11 +697,11 @@ class Model:
         hexabb = rout*0.
         for i in range(self.bb_max-self.bb_min+1):
             power = self.bb_min + i
-            monobb += pars['bb_%d_mono'%i]*(rout**power)
+            monobb += pars['bb_%d_mono'%i]*((rout/200)**power)
             if self.fit_quad:
-                quadbb += pars['bb_%d_quad'%i]*(rout**power)
+                quadbb += pars['bb_%d_quad'%i]*((rout/200)**power)
             if self.fit_hexa: 
-                hexabb += pars['bb_%d_hexa'%i]*(rout**power)
+                hexabb += pars['bb_%d_hexa'%i]*((rout/200)**power)
 
         bb = monobb
         if self.fit_quad:
