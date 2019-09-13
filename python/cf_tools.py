@@ -77,23 +77,24 @@ class Corr:
             self.rebin(rebin_r=rebin_r, shift_r=shift_r) 
 
     def rebin(self, rebin_r=1, shift_r=0):
-
+        
+        #-- Get number of bins
         nr = (self.nr-rebin_r)//rebin_r
-        self.mu2d = np.mean(np.reshape(
-                        self.mu2d[shift_r:-rebin_r+shift_r],
-                                     (nr, rebin_r, -1)), axis=1)
-        self.r2d  = np.mean(np.reshape(
-                        self.r2d[shift_r:-rebin_r+shift_r], 
-                                     (nr, rebin_r, -1)), axis=1)
-        self.dd =   np.sum( np.reshape(
-                        self.dd[shift_r:-rebin_r+shift_r], 
-                                     (nr, rebin_r, -1)), axis=1) 
-        self.dr =   np.sum( np.reshape(
-                        self.dr[shift_r:-rebin_r+shift_r], 
-                                     (nr, rebin_r, -1)), axis=1) 
-        self.rr =   np.sum( np.reshape(
-                        self.rr[shift_r:-rebin_r+shift_r],
-                                     (nr, rebin_r, -1)), axis=1) 
+        ifirst = shift_r
+        ilast = nr*rebin_r+shift_r
+
+        #-- For mu and r, take the mean (they should be all the same)
+        for field in ['mu2d', 'r2d']:
+            x = self.__dict__[field]
+            x = np.mean(np.reshape(x[ifirst:ilast], (nr, rebin_r, -1)), axis=1)
+            self.__dict__[field] = x
+
+        #-- For paircounts, do the sum 
+        for field in ['dd', 'dr', 'rr']:
+            x = self.__dict__[field]
+            x = np.sum(np.reshape(x[ifirst:ilast], (nr, rebin_r, -1)), axis=1)
+            self.__dict__[field] = x
+
         self.r = np.unique(self.r2d)
         self.mu = np.unique(self.mu2d)
         self.nr = self.r.size
