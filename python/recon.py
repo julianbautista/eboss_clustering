@@ -2,7 +2,7 @@ from __future__ import print_function
 import numpy as np
 import os
 from scipy.fftpack import fftfreq
-from ebosscat import Cosmo
+from cosmo import CosmoSimple
 import pyfftw
 import fastmodules
 import sys
@@ -18,7 +18,7 @@ class MiniCat:
 
     def get_cart(self, cosmo=None):
         if cosmo is None:
-            cosmo = Cosmo(OmegaM=0.31)
+            cosmo = CosmoSimple(omega_m=0.31)
         dist = cosmo.get_comoving_distance(self.Z)
         dec = np.radians(self.dec)
         ra = np.radians(self.ra)
@@ -33,33 +33,44 @@ class MiniCat:
         self.newy = y*1
         self.newz = z*1 
 
+    def get_zeff(self):
+        return np.sum(self.we**2*self.Z)/np.sum(self.we**2)
+
 class Recon:
 
-    def __init__(self, \
-                 data_ra, data_dec, data_z, data_we, \
-                 rand_ra, rand_dec, rand_z, rand_we, \
-                 bias=2.3, f=0.817, smooth=15., nbins=256, \
+    def __init__(self, 
+                 data_ra, data_dec, data_z, data_we, 
+                 rand_ra, rand_dec, rand_z, rand_we, 
+                 bias=2.3, f=0.817, smooth=15., nbins=256, 
                  padding=200., opt_box=1, nthreads=1, omega_m=0.31):
         ''' RA, DEC, Z and WE arrays should all be in np.float64 format
             for fastmodules to work 
         '''
 
-        beta = f/bias
 
         #-- parameters of box
-        cosmo = Cosmo(OmegaM=omega_m)
+        cosmo = CosmoSimple(omega_m=omega_m)
+        
+
         print('Num bins:', nbins)
         print('Smoothing [Mpc/h]:', smooth)
 
         dat = MiniCat(data_ra, data_dec, data_z, data_we)
         ran = MiniCat(rand_ra, rand_dec, rand_z, rand_we)
+        
+        #-- computing effective redshift and growth rate
+        z_eff = dat.get_zeff()
+        f = cosmo.get_growth_rate(z_eff)
+        print('Effective redshift sum(we**2*z)/sum(we**2) = :', z_eff)
+        print('Growth rate:', f)
+        beta = f/bias
 
         #-- computing cartesian positions
         dat.get_cart(cosmo=cosmo)
         ran.get_cart(cosmo=cosmo)
 
-        print('Randoms min of x, y, z', min(ran.x), min(ran.y), min(ran.z))
-        print('Randoms max of x, y, z', max(ran.x), max(ran.y), max(ran.z))
+        print('Randoms min of x, y, z', np.min(ran.x), np.min(ran.y), np.min(ran.z))
+        print('Randoms max of x, y, z', np.max(ran.x), np.max(ran.y), np.max(ran.z))
 
         sum_wgal = np.sum(dat.we)
         sum_wran = np.sum(ran.we)
@@ -90,7 +101,7 @@ class Recon:
             y0 = 0.5*(np.max(self.ran.y)+np.min(self.ran.y)) 
             z0 = 0.5*(np.max(self.ran.z)+np.min(self.ran.z)) 
 
-            box = max([dx, dy, dz])+2*padding
+            box = np.max([dx, dy, dz])+2*padding
             self.xmin = x0-box/2 
             self.ymin = y0-box/2 
             self.zmin = z0-box/2 
@@ -285,11 +296,10 @@ class Recon:
         dat.newz = dat.z + f * psi_dot_rhat * dat.z/dat.dist 
 
         if verbose:
-            print('Debug: first 10 x,y,z shifts and old and new observer distances')
+            print('Debug: first 10 x,y,z, and total shifts')
             for i in range(10):
-                oldr = np.sqrt(dat.x[i] ** 2 + dat.y[i] ** 2 + dat.z[i] ** 2)
-                newr = np.sqrt(dat.newx[i] ** 2 + dat.newy[i] ** 2 + dat.newz[i] ** 2)
-                print('%.3f %.3f %.3f %.3f %.3f' % (shift_x[i], shift_y[i], shift_z[i], oldr, newr))
+                shift = np.sqrt(shift_x[i]**2 + shift_y[i]**2 + shift_z[i]**2)
+                print('%.3f %.3f %.3f %.3f ' % (shift_x[i], shift_y[i], shift_z[i], shift))
 
 
         self.deltar = deltar

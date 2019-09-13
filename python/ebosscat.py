@@ -1,70 +1,20 @@
 from __future__ import print_function
 import os
 import sys
-import numpy as N
-import pylab as P
+import numpy as np
+import pylab as plt
 #import mangle
 #import graphmask
 import copy
 import healpy as hp
 from subprocess import call
 #from systematics import MultiFit
+from cosmo import CosmoSimple
 
 from astropy.io import fits
 from astropy.coordinates import SkyCoord
 from astropy import units as u
 
-#-- cosmology
-class Cosmo:
-
-    def __init__(self, OmegaM=0.31, h=0.676):
-        print('Initializing cosmology with OmegaM = %.2f'%OmegaM)
-        c = 299792458. #m/s
-        OmegaL = 1.-OmegaM
-        ztab = N.linspace(0., 4., 10000)
-        E_z = N.sqrt(OmegaL + OmegaM*(1+ztab)**3)
-        rtab = N.zeros(ztab.size)
-        for i in range(1, ztab.size):
-            rtab[i] = rtab[i-1] + c*1e-3 * (1/E_z[i-1]+1/E_z[i])/2. * (ztab[i]-ztab[i-1]) / 100.
-
-        self.h = h
-        self.c = c
-        self.OmegaM = OmegaM
-        self.OmegaL = OmegaL
-        self.ztab = ztab
-        self.rtab = rtab 
-
-    #-- comoving distance in Mpc/h
-    def get_comoving_distance(self, z):
-        return N.interp(z, self.ztab, self.rtab)
-
-    def get_redshift(self, r):
-        return N.interp(r, self.rtab, self.ztab)
-
-
-    #-- comoving spherical volume between zmin and zman in (Mpc/h)**3
-    def shell_vol(self, zmin, zmax):
-        rmin = self.get_comoving_distance(zmin)
-        rmax = self.get_comoving_distance(zmax)
-        return 4*N.pi/3.*(rmax**3-rmin**3)
-
-    def get_box_size(self, ra, dec, zmin=0.5, zmax=1.0):
-
-        dmin = get_comoving_distance(zmin)
-        dmax = get_comoving_distance(zmax)
-
-        theta = (-dec+90)*N.pi/180.
-        phi = (ra)*N.pi/180
-
-        xmin = dmin * N.sin(theta)*N.cos(phi)
-        ymin = dmin * N.sin(theta)*N.sin(phi)
-        zmin = dmin * N.cos(theta)
-        xmax = dmax * N.sin(theta)*N.cos(phi)
-        ymax = dmax * N.sin(theta)*N.sin(phi)
-        zmax = dmax * N.cos(theta)
-
-        for pair in [[xmin, xmax], [ymin, ymax], [zmin, zmax]]:
-            print( abs(N.array(pair).min() - N.array(pair).max()))
 
 class Nbar:
     
@@ -73,10 +23,10 @@ class Nbar:
             fin = args[0]
             f = open(fin)
             f.readline()
-            mask_area_eff, veff_tot = N.array(f.readline().split()).astype(float)
+            mask_area_eff, veff_tot = np.array(f.readline().split()).astype(float)
 
             zcen, zlow, zhigh, nbar, wfkp, shell_vol, wgals = \
-                N.loadtxt(fin, skiprows=3, unpack=1)
+                np.loadtxt(fin, skiprows=3, unpack=1)
 
             self.mask_area_eff = mask_area_eff
             self.veff_tot = veff_tot
@@ -90,18 +40,18 @@ class Nbar:
             self.nbins = zcen.size
     
     def plot(self, label=None, color=None, alpha=1.0):
-        P.plot(self.zcen, self.nbar/1e-4, label=label, color=color, alpha=alpha)
-        P.ylabel(r'$\bar{n}(z)$  $[10^{-4} h^3 \mathrm{Mpc}^{-3}]$', fontsize=16)
-        P.xlabel(r'$z$', fontsize=16)
-        P.tight_layout()
+        plt.plot(self.zcen, self.nbar/1e-4, label=label, color=color, alpha=alpha)
+        plt.ylabel(r'$\bar{n}(z)$  $[10^{-4} h^3 \mathrm{Mpc}^{-3}]$', fontsize=16)
+        plt.xlabel(r'$z$', fontsize=16)
+        plt.tight_layout()
 
     def compute_effective_volume(self, P0=10000., cosmo=None, \
                                  zmin=0.6, zmax=1.0):
         if cosmo is None:
-            cosmo = Cosmo()
+            cosmo = CosmoSimple()
 
         mask_vol = self.mask_area_eff * cosmo.shell_vol(self.zlow, self.zhigh)\
-                   / (4*N.pi*(180./N.pi)**2)
+                   / (4*np.pi*(180./np.pi)**2)
         veff = ((self.nbar*P0)/(1+self.nbar*P0))**2*mask_vol
         w = (self.zcen>=zmin)&(self.zcen<=zmax)
         veff_tot = sum(veff[w])
@@ -215,8 +165,8 @@ class Mask:
             'bright_star', 'bright_object', 'centerpost']):
 
         
-        w = (N.ones(ra.size)==1)
-        bits = N.zeros(ra.size, dtype=int)
+        w = (np.ones(ra.size)==1)
+        bits = np.zeros(ra.size, dtype=int)
 
         #-- getting all targets inside geometry first
         print(' Applying geometry')
@@ -267,21 +217,21 @@ class Mask:
         '''
 
 
-        unique_mask_sectors = N.unique(mask.sector)
-        bins = N.append(unique_mask_sectors, unique_mask_sectors.max()+1)
+        unique_mask_sectors = np.unique(mask.sector)
+        bins = np.append(unique_mask_sectors, unique_mask_sectors.max()+1)
         
         for sec in sectors:
             if sec not in unique_mask_sectors:
                 print(sec, 'not in mask')
 
-        hist_den, bins = N.histogram(sectors[w_den], bins=bins)
-        hist_num, bins = N.histogram(sectors[w_num], bins=bins)
+        hist_den, bins = np.histogram(sectors[w_den], bins=bins)
+        hist_num, bins = np.histogram(sectors[w_num], bins=bins)
         w = hist_den > 0
-        comp = N.zeros(unique_mask_sectors.size) 
+        comp = np.zeros(unique_mask_sectors.size) 
         comp[w] = hist_num[w]*1./hist_den[w]
 
         print('  Completeness values (min, median, max):', \
-                min(comp[w]), N.median(comp[w]), max(comp[w]))
+                min(comp[w]), np.median(comp[w]), max(comp[w]))
 
         #-- setting low completeness sectors to zero
         w = (comp < mincomp)
@@ -295,7 +245,7 @@ class Mask:
             new_mask.weights[i] = comp[w]
 
         print('  Getting completeness for each galaxy')
-        comps = N.zeros(sectors.size)
+        comps = np.zeros(sectors.size)
 
         for i, sec in enumerate(sectors):
             w = (unique_mask_sectors == sec)
@@ -318,12 +268,12 @@ class Mask:
             cap = 'South'
         
 
-        my_cmap = P.get_cmap('jet')
+        my_cmap = plt.get_cmap('jet')
        
         #polys= read_mangle_mask(mask)
         polys=mangle.Mangle(mask, keep_ids=True)
 
-        fig = P.figure(figsize=(12,7))
+        fig = plt.figure(figsize=(12,7))
 
         fig.subplots_adjust(hspace=0)
         if cap=='North':
@@ -341,8 +291,8 @@ class Mask:
         else:
             print('cap = North or South. Input:', cap)
 
-        m.drawmeridians(N.arange(0,360,5),linewidth=.1)
-        m.drawparallels(N.arange(-10,80,10),linewidth=.1)
+        m.drawmeridians(np.arange(0,360,5),linewidth=.1)
+        m.drawparallels(np.arange(-10,80,10),linewidth=.1)
 
         w = polys.weights > 0
         azel, weight, midpoints = m.get_graphics_polygons(polys[w])
@@ -350,18 +300,18 @@ class Mask:
                 m.world2pix(azel), weight=weight, draw_colorbar=False, \
                 cmap=my_cmap, linewidth=0, vmin=vmin, vmax=vmax)
 
-        P.gca().xaxis.set_label_coords(.5,-.06)
-        P.gca().yaxis.set_label_coords(-.09,.5)
-        P.xlabel(r'$\alpha$ ($^\circ$)')
-        P.ylabel(r'$\delta$ ($^\circ$)')
-        P.title(ptitle)
+        plt.gca().xaxis.set_label_coords(.5,-.06)
+        plt.gca().yaxis.set_label_coords(-.09,.5)
+        plt.xlabel(r'$\alpha$ ($^\circ$)')
+        plt.ylabel(r'$\delta$ ($^\circ$)')
+        plt.title(ptitle)
 
-        axins=inset_axes(P.gca(), width="40%", height="3%", loc=1)
-        P.colorbar(p, cax=axins, orientation='horizontal', \
-                   ticks=N.linspace(vmin, vmax, 6))
+        axins=inset_axes(plt.gca(), width="40%", height="3%", loc=1)
+        plt.colorbar(p, cax=axins, orientation='horizontal', \
+                   ticks=np.linspace(vmin, vmax, 6))
         if save:
-            P.savefig(save, bbox_inches='tight')
-        P.draw()
+            plt.savefig(save, bbox_inches='tight')
+        plt.draw()
 
     @staticmethod
     def create_randoms_ransack(nran, mask_file, seed_ransack=323466458):
@@ -398,7 +348,7 @@ class Mask:
               (seed_ransack, nran, mask_file, ransack_output) 
 
         os.system(cmd)
-        ra, dec, ipoly = N.loadtxt(ransack_output, unpack=1, skiprows=1)
+        ra, dec, ipoly = np.loadtxt(ransack_output, unpack=1, skiprows=1)
         os.system('rm ransack.tmp')
 
         rancat = Catalog()
@@ -434,7 +384,7 @@ class Utils:
         w = d2d.value <= angle
         idx[~w] = -1
         
-        idx1 = N.where(w)[0]
+        idx1 = np.where(w)[0]
         idx2 = idx[idx>-1] 
         distance = d2d.value[w]
 
@@ -467,7 +417,7 @@ class Utils:
     def maskbits(value):
         ''' Get mask bit values from integer '''
 
-        if type(value)==list or type(value)==N.ndarray:
+        if type(value)==list or type(value)==np.ndarray:
             return [Utils.maskbits(v) for v in value]
         else:
             return [pos for pos, char in enumerate(bin(value)[::-1]) if char == '1']
@@ -505,7 +455,7 @@ class Utils:
             R = hp.Rotator(rot=rot, inv=False)
 
         # rotate new coordinate system to original coordinates
-        theta, phi = hp.pix2ang(res, N.arange(len(mi)))
+        theta, phi = hp.pix2ang(res, np.arange(len(mi)))
         mtheta, mphi = R(theta, phi)
         mr = hp.get_interp_val(mi, mtheta, mphi)
 
@@ -573,21 +523,21 @@ class Catalog(object):
         if unique:
             self.remove_duplicates()
 
-        self.WEIGHT_FKP = N.ones(self.size)
-        self.WEIGHT_SYSTOT = N.ones(self.size) 
-        self.FIBER_COMP = N.zeros(self.size)
-        self.Z_COMP = N.zeros(self.size)
+        self.WEIGHT_FKP = np.ones(self.size)
+        self.WEIGHT_SYSTOT = np.ones(self.size) 
+        self.FIBER_COMP = np.zeros(self.size)
+        self.Z_COMP = np.zeros(self.size)
  
     def remove_duplicates(self):
         
-        uthid = N.unique(self.THING_ID_TARGETING)
+        uthid = np.unique(self.THING_ID_TARGETING)
         if self.size == uthid.size:
             print('There are no duplicates')
             return
 
         print('There are duplicates in the collate file:', self.size-uthid.size)
         print('Removing duplicates...'    )
-        w = N.argsort(self.THING_ID_TARGETING)
+        w = np.argsort(self.THING_ID_TARGETING)
         index = list()
         for i in range(self.size-1):
             if self.THING_ID_TARGETING[w[i]] != self.THING_ID_TARGETING[w[i+1]]:
@@ -597,7 +547,7 @@ class Catalog(object):
         if self.size-2 in index:
             index.append(self.size-1)
 
-        index = N.array(index)
+        index = np.array(index)
         print(self.size, index.size)
         self.cut(w[index])
 
@@ -609,15 +559,15 @@ class Catalog(object):
 
 
         self.RA, self.DEC, self.Z, self.COMP, nz, self.WEIGHT_FKP = \
-                N.loadtxt(mockfile, unpack=True)
+                np.loadtxt(mockfile, unpack=True)
         self.size = self.RA.size
-        self.WEIGHT_NOZ = N.ones(self.size)
-        self.WEIGHT_CP = N.ones(self.size)
-        self.WEIGHT_SYSTOT = N.ones(self.size)
-        self.IMATCH = N.ones(self.size)
-        self.COMP = N.ones(self.size)
-        self.FIBER_COMP = N.ones(self.size)
-        self.Z_COMP = N.ones(self.size)
+        self.WEIGHT_NOZ = np.ones(self.size)
+        self.WEIGHT_CP = np.ones(self.size)
+        self.WEIGHT_SYSTOT = np.ones(self.size)
+        self.IMATCH = np.ones(self.size)
+        self.COMP = np.ones(self.size)
+        self.FIBER_COMP = np.ones(self.size)
+        self.Z_COMP = np.ones(self.size)
 
     def cut(self, w):
         ''' Trim catalog columns using a boolean array'''
@@ -675,7 +625,7 @@ class Catalog(object):
             return 0
 
         w, bits = Mask.run_vetos(self.RA, self.DEC, masknames=masknames)
-        #self.vetofraction = N.sum(w)*1./w.size
+        #self.vetofraction = np.sum(w)*1./w.size
         self.vetobits = bits
         
         if self.target=='LRG' and self.cap=='North':
@@ -695,20 +645,20 @@ class Catalog(object):
         print('=======================================================')
         print(' ')
 
-        self.PLATE = N.zeros(self.size, dtype=int)
-        self.FIBERID = N.zeros(self.size, dtype=int)
-        self.MJD = N.zeros(self.size, dtype=int)
-        self.THING_ID = N.zeros(self.size, dtype=int)
-        self.EBOSS_TARGET_ID_SPEC = N.zeros(self.size, dtype=int)
-        self.XFOCAL = N.zeros(self.size)
-        self.YFOCAL = N.zeros(self.size)
+        self.PLATE = np.zeros(self.size, dtype=int)
+        self.FIBERID = np.zeros(self.size, dtype=int)
+        self.MJD = np.zeros(self.size, dtype=int)
+        self.THING_ID = np.zeros(self.size, dtype=int)
+        self.EBOSS_TARGET_ID_SPEC = np.zeros(self.size, dtype=int)
+        self.XFOCAL = np.zeros(self.size)
+        self.YFOCAL = np.zeros(self.size)
 
-        self.IMATCH = N.zeros(self.size, dtype=int)
-        self.Z = N.zeros(self.size)
-        self.ZWARNING = N.zeros(self.size, dtype=int)
-        self.RCHI2DIFF = N.zeros(self.size)
-        self.CLASS = N.zeros(self.size, dtype='15S')
-        self.CHUNK_SPEC = N.zeros(self.size, dtype='15S')
+        self.IMATCH = np.zeros(self.size, dtype=int)
+        self.Z = np.zeros(self.size)
+        self.ZWARNING = np.zeros(self.size, dtype=int)
+        self.RCHI2DIFF = np.zeros(self.size)
+        self.CLASS = np.zeros(self.size, dtype='15S')
+        self.CHUNK_SPEC = np.zeros(self.size, dtype='15S')
 
         
         spall = fits.open(zcatalog)[1].data
@@ -749,7 +699,7 @@ class Catalog(object):
             self.RCHI2DIFF[id1] = spall.RCHI2DIFF_1[id2] 
             #-- if redmonster and spec1d disagree for  z<0.4 and 
             #-- z>1.0, pick spec1d classification
-            wz = N.where((abs(spall.Z_RM[id2] - spall.Z_NOQSO[id2]) > 0.01)&\
+            wz = np.where((abs(spall.Z_RM[id2] - spall.Z_NOQSO[id2]) > 0.01)&\
                          (spall.ZWARNING_RM[id2]    == 0) & \
                          (spall.ZWARNING_NOQSO[id2] == 0) & \
                          ( (spall.Z_RM[id2] < 0.4) | \
@@ -796,7 +746,7 @@ class Catalog(object):
         w = (self.IMATCH != 0) & (self.PLATE > 0)
         sectors = self.SECTOR[w]
         plates = self.PLATE[w]
-        unique_sectors = N.unique(sectors)
+        unique_sectors = np.unique(sectors)
         
         if sect_plate:
             fsec = open(sect_plate, 'w')
@@ -806,7 +756,7 @@ class Catalog(object):
         print('Getting plate numbers in', unique_sectors.size, 'sectors' )
         for sect in unique_sectors:
             w = (sectors == sect) 
-            ps = N.unique(plates[w])
+            ps = np.unique(plates[w])
             plates_per_sect[sect] = ps
 
             if sect_plate:
@@ -826,9 +776,9 @@ class Catalog(object):
         pix = mask.get_polyids(self.RA[w], self.DEC[w])
         plates = self.PLATE[w]
         plates_per_pixel = dict()
-        for px in N.unique(pix):
+        for px in np.unique(pix):
             w = pix==px
-            ps = N.unique(plates[w])
+            ps = np.unique(plates[w])
             plates_per_pixel[px] = ps
         self.plates_per_pixel = plates_per_pixel
 
@@ -848,7 +798,7 @@ class Catalog(object):
         
         '''
         if seed!=0:
-            N.random.seed(seed)
+            np.random.seed(seed)
 
         if sum(mask.weights == 0)>0:
             print('Warning: mask containing zero weight regions')
@@ -867,7 +817,7 @@ class Catalog(object):
 
             if sectors[i] in plates_dict:
                 splates = plates_dict[sectors[i]]
-                plates[i] = splates[N.random.randint(splates.size)] 
+                plates[i] = splates[np.random.randint(splates.size)] 
             else:
                 plates[i] = 0
 
@@ -883,22 +833,22 @@ class Catalog(object):
         print(' ')
 
         sectors = self.SECTOR
-        unique_sectors = N.unique(sectors)
+        unique_sectors = np.unique(sectors)
       
         cnt_legacy_removed = 0
      
         #-- making copies for testing purposes
-        all_z = N.copy(self.Z)
-        all_imatch = N.copy(self.IMATCH)
-        all_weight_cp = N.ones(self.size)
-        all_weight_noz = N.ones(self.size)
+        all_z = np.copy(self.Z)
+        all_imatch = np.copy(self.IMATCH)
+        all_weight_cp = np.ones(self.size)
+        all_weight_noz = np.ones(self.size)
 
-        all_pair_in_sector_good = N.zeros(self.size, dtype=int)
-        all_pair_in_sector_tot = N.zeros(self.size, dtype=int)
-        all_gal_in_sector_good = N.zeros(self.size, dtype=int)
-        all_gal_in_sector_bad = N.zeros(self.size, dtype=int)
-        all_cp_pair_over_poss = N.zeros(self.size)
-        all_cp_gal_over_poss = N.zeros(self.size)
+        all_pair_in_sector_good = np.zeros(self.size, dtype=int)
+        all_pair_in_sector_tot = np.zeros(self.size, dtype=int)
+        all_gal_in_sector_good = np.zeros(self.size, dtype=int)
+        all_gal_in_sector_bad = np.zeros(self.size, dtype=int)
+        all_cp_pair_over_poss = np.zeros(self.size)
+        all_cp_gal_over_poss = np.zeros(self.size)
 
 
         if dist_root != '':
@@ -908,18 +858,18 @@ class Catalog(object):
         for i, sect in enumerate(unique_sectors):
             w = (sectors == sect) & (all_imatch != 2) & (self.vetobits == 0)
 
-            plates = N.unique(self.PLATE[w])
+            plates = np.unique(self.PLATE[w])
 
             z = all_z[w]
             imatch = all_imatch[w]
-            weight_cp = N.zeros(z.size)
+            weight_cp = np.zeros(z.size)
            
             if (imatch==0).all():
                 continue
 
             print('  %d of %d'%(i, unique_sectors.size), \
                   '\tSector#:', sect,\
-                  '\tTargets:', N.sum(w), \
+                  '\tTargets:', np.sum(w), \
                   '\tnplates:', len(plates),\
                   '\tnspec:', sum(imatch>0))
 
@@ -1020,9 +970,9 @@ class Catalog(object):
                          imatch1 != 3 and imatch2 != 3 and \
                          imatch1 != 0 and imatch2 != 0 and \
                          imatch1 != 8 and imatch2 != 8:
-                        r1 = N.random.rand()
+                        r1 = np.random.rand()
                         if r1 < cp_gal_over_poss: continue
-                        r2 = N.random.rand() 
+                        r2 = np.random.rand() 
                         if r2 > 0.5: 
                             imatch[pair[0]] = 8
                             # this needs to update too so the same galaxy 
@@ -1055,7 +1005,7 @@ class Catalog(object):
                 continue
           
             #-- find closest neighbor with imatch = 1, 4 (star) or 9 (wrong class)
-            wgood = N.where( (imatch == 1) | (imatch == 4) | (imatch == 9))[0]
+            wgood = np.where( (imatch == 1) | (imatch == 4) | (imatch == 9))[0]
             if wgood.size == 0:
                 print('  No good redshifts found to do \
                          redshift failure correction')
@@ -1203,7 +1153,7 @@ class Catalog(object):
             
 
         #-- randomly sub-sample known galaxies to match completeness
-        rr = N.random.rand(self.size)
+        rr = np.random.rand(self.size)
         w = (self.COMP > 0) & ((self.IMATCH != 2) | (rr < self.COMP))
         self.cut(w)
 
@@ -1214,7 +1164,7 @@ class Catalog(object):
         weights = self.get_weights(cp=cp, noz=noz, fkp=0, syst=0)[ww] 
        
         #-- weighted number of galaxies 
-        wgal = N.sum(weights)
+        wgal = np.sum(weights)
     
         self.ngalaxies = ngal
         self.wgalaxies = wgal
@@ -1256,8 +1206,8 @@ class Catalog(object):
 
         self.vetofraction = rancat.vetofraction
 
-        self.mask_area = sum(mask.areas * (mask.weights > 0.001)) * (180./N.pi)**2 * self.vetofraction 
-        self.mask_area_eff = sum(mask.areas * mask.weights) * (180./N.pi)**2 * self.vetofraction 
+        self.mask_area = sum(mask.areas * (mask.weights > 0.001)) * (180./np.pi)**2 * self.vetofraction 
+        self.mask_area_eff = sum(mask.areas * mask.weights) * (180./np.pi)**2 * self.vetofraction 
 
         rancat.mask_area = self.mask_area
         rancat.mask_area_eff = self.mask_area_eff
@@ -1284,10 +1234,10 @@ class Catalog(object):
         print(' ')
 
         if cosmo is None:
-            cosmo = Cosmo()
+            cosmo = CosmoSimple()
 
-        nbins = int(N.floor((zmax-zmin)/dz))
-        zedges = N.linspace(zmin, zmax, nbins+1)
+        nbins = int(np.floor((zmax-zmin)/dz))
+        zedges = np.linspace(zmin, zmax, nbins+1)
         zcen = 0.5*(zedges[:-1]+zedges[1:])
         zlow = zedges[:-1]
         zhigh = zedges[1:]
@@ -1302,12 +1252,12 @@ class Catalog(object):
         z = self.Z[ww]
         weights = weights[ww]
         
-        total_weight = N.sum(weights)
-        cumul_weight = N.cumsum(weights)
+        total_weight = np.sum(weights)
+        cumul_weight = np.cumsum(weights)
 
-        cnt_tot, zedges = N.histogram(z, bins=zedges, weights=weights)
+        cnt_tot, zedges = np.histogram(z, bins=zedges, weights=weights)
         mask_vol = mask_area_eff * cosmo.shell_vol(zlow, zhigh) / \
-                   (4*N.pi * (180./N.pi)**2)
+                   (4*np.pi * (180./np.pi)**2)
         nbar = cnt_tot / mask_vol
         wfkp = 1./(1+nbar*P0)
         veff = ((nbar*P0)/(1+nbar*P0))**2 * mask_vol
@@ -1332,26 +1282,26 @@ class Catalog(object):
     def assign_random_redshifts(self, rancat, nbar, cp=1, noz=1, syst=1, seed=0):
 
         if seed:
-            N.random.seed(seed)
+            np.random.seed(seed)
 
         weights = self.get_weights(cp=cp, noz=noz, fkp=0, syst=syst)
 
         w = (self.COMP > 0) & ( (self.IMATCH == 1) | (self.IMATCH == 2) )
         z = self.Z[w] 
         weights = weights[w]
-        total_weight = N.sum(weights)
-        cumul_weight = N.cumsum(weights)
+        total_weight = np.sum(weights)
+        cumul_weight = np.cumsum(weights)
 
         #-- assing redshifts to randoms
-        weight_random = N.random.rand(rancat.size)*total_weight
-        index0 = N.arange(cumul_weight.size)
-        index1 = N.floor(N.interp(weight_random, cumul_weight, index0)).astype(int)
+        weight_random = np.random.rand(rancat.size)*total_weight
+        index0 = np.arange(cumul_weight.size)
+        index1 = np.floor(np.interp(weight_random, cumul_weight, index0)).astype(int)
         rancat.Z = z[index1]
         rancat.veff_tot = self.veff_tot
        
     def assign_fkp_weights(self, nbar):
 
-        wfkp = N.ones(self.size)
+        wfkp = np.ones(self.size)
         for i in range(nbar.zcen.size):
             w = (self.Z >= nbar.zlow[i]) & (self.Z < nbar.zhigh[i])
             wfkp[w] = nbar.wfkp[i]
@@ -1390,7 +1340,7 @@ class Catalog(object):
         header['P0'] = self.P0
           
         if cosmo is None:
-            cosmo = Cosmo() 
+            cosmo = CosmoSimple() 
         header['OmegaM'] = cosmo.OmegaM
         header['OmegaL'] = cosmo.OmegaL
         header['h'] = cosmo.h
@@ -1415,7 +1365,7 @@ class Catalog(object):
         elif noz==1:
             weights = 1.*self.WEIGHT_NOZ 
         else:
-            weights = N.ones(self.size)
+            weights = np.ones(self.size)
 
         if fkp:
             weights *= self.WEIGHT_FKP
@@ -1428,11 +1378,11 @@ class Catalog(object):
     def plot(self, w=None, fmt='.', alpha=1, color=None, label=None):
 
         if w is None:
-            w = N.ones(self.size)==1
+            w = np.ones(self.size)==1
 
         ra = self.RA[w] -360*(self.RA[w]>300.)
         dec = self.DEC[w]
-        P.plot(ra, dec, \
+        plt.plot(ra, dec, \
                 fmt, alpha=alpha, color=color,  label=label)
 
     
@@ -1466,7 +1416,7 @@ class Catalog(object):
         c = Catalog()
         for f in fields:
             print(f)
-            x = N.append(c1.__dict__[f], c2.__dict__[f], axis=0)
+            x = np.append(c1.__dict__[f], c2.__dict__[f], axis=0)
             c.__dict__[f] = x
 
         c.size = c.RA.size
@@ -1597,7 +1547,7 @@ def main(outdir=None, \
     cat.compute_area(rancat, mask)
 
     #-- compute nbar, fkp weights and attribute redshifts to randoms
-    cosmo = Cosmo(OmegaM=OmegaM)
+    cosmo = CosmoSimple(OmegaM=OmegaM)
     nbar = cat.compute_nbar(noz=noz, cosmo=cosmo) 
     nbar.export(nbar_file)
 
