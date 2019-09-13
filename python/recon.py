@@ -199,51 +199,41 @@ class Recon:
         fastmodules.allocate_gal_cic(deltag, dat.newx, dat.newy, dat.newz, dat.we, 
                                      dat.size, self.xmin, self.ymin, self.zmin, self.box, 
                                      nbins, 1)
-        #deltag = self.allocate_gal_cic(dat)
+        
+
+        ##-- Smoothing via FFTs
         if verbose:
             print('Smoothing...')
             sys.stdout.flush()
-        #deltag = gaussian_filter(deltag, smooth/binsize)
-        ##-- Smoothing via FFTs
         rho = deltag + 0.0j
         fft_obj(input_array=rho, output_array=rhok)
         fastmodules.mult_norm(rhok, rhok, norm)
         ifft_obj(input_array=rhok, output_array=rho)
         deltag = rho.real
 
+        
+        #-- Normalize using the randoms, avoiding possible divide-by-zero errors
         if verbose:
             print('Computing density fluctuations, delta...')
             sys.stdout.flush()
-        # normalize using the randoms, avoiding possible divide-by-zero errors
         fastmodules.normalize_delta_survey(delta, deltag, deltar, self.alpha, self.ran_min)
         del(deltag)  # deltag no longer required anywhere
 
-        #delta[:]  = deltag - self.alpha*deltar
-        #w=np.where(deltar>self.ran_min)
-        #delta[w] = delta[w]/(self.alpha*deltar[w])
-        #w2=np.where((deltar<=self.ran_min)) 
-        #delta[w2] = 0.
-        #w3=np.where(delta>np.percentile(delta[w].ravel(), 99))
-        #delta[w3] = 0.
-        #del(w)
-        #del(w2)
-        #del(w3)
-        #del(deltag)
 
+        #-- Fourier transforming delta field
         if verbose:
             print('Fourier transforming delta field...')
-        sys.stdout.flush()
+            sys.stdout.flush()
         fft_obj(input_array=delta, output_array=delta)
-        ## -- delta/k**2
+        
+        #-- Compute delta/k**2
         k = fftfreq(self.nbins, d=binsize) * 2 * np.pi
         fastmodules.divide_k2(delta, delta, k)
-        #delta /= (k[:, None, None]**2 + k[None, :, None]**2 + k[None, None, :]**2 + 1e-100)
-        #delta[0, 0, 0] = 0 #-- was 1. (changed just it case) 
 
-        # now solve the basic building block: IFFT[-i k delta(k)/(b k^2)]
+        #-- Now solve the basic building block: IFFT[-i k delta(k)/(b k^2)]
         if verbose:
             print('Inverse Fourier transforming to get psi...')
-        sys.stdout.flush()
+            sys.stdout.flush()
         fastmodules.mult_kx(deltak, delta, k, bias)
         ifft_obj(input_array=deltak, output_array=psi_x)
         fastmodules.mult_ky(deltak, delta, k, bias)
@@ -251,55 +241,47 @@ class Recon:
         fastmodules.mult_kz(deltak, delta, k, bias)
         ifft_obj(input_array=deltak, output_array=psi_z)
         
-        ##-- Estimating the IFFT in Eq. 12 of Burden et al. 2015
-        #print('Inverse Fourier transforming to get psi...')
-        #norm_ifft = 1.#(k[1]-k[0])**3/(2*np.pi)**3*nbins**3
-        #deltak[:] = delta*-1j*k[:, None, None]/bias
-        #ifft_obj(input_array=deltak, output_array=psi_x)
-        #deltak[:] = delta*-1j*k[None, :, None]/bias
-        #ifft_obj(input_array=deltak, output_array=psi_y)
-        #deltak[:] = delta*-1j*k[None, None, :]/bias
-        #ifft_obj(input_array=deltak, output_array=psi_z)
-        #psi_x = ifftn(-1j*delta*k[:, None, None]/bias).real*norm_ifft
-        #psi_y = ifftn(-1j*delta*k[None, :, None]/bias).real*norm_ifft
-        #psi_z = ifftn(-1j*delta*k[None, None, :]/bias).real*norm_ifft
-        
-        # from grid values of Psi_est = IFFT[-i k delta(k)/(b k^2)], compute the values at the galaxy positions
+        #-- From grid values of Psi_est = IFFT[-i k delta(k)/(b k^2)], 
+        #-- compute the values at the galaxy positions
         if verbose:
             print('Calculating shifts...')
-        sys.stdout.flush()
-        shift_x, shift_y, shift_z = self.get_shift(dat.newx, dat.newy, dat.newz, 
-                                                   psi_x.real, psi_y.real, psi_z.real)
+            sys.stdout.flush()
+
+        psi_gal_x, psi_gal_y, psi_gal_z = self.get_psi(dat.newx, dat.newy, dat.newz, 
+                                                 psi_x.real, psi_y.real, psi_z.real)
 
 
-        #-- for first loop need to approximately remove RSD component 
+        #-- For first loop need to approximately remove RSD component 
         #-- from Psi to speed up calculation
         #-- first loop so want this on original positions (cp), 
         #-- not final ones (np) - doesn't actualy matter
         if iloop==0:
-            psi_dot_rhat = (shift_x*dat.x + \
-                            shift_y*dat.y + \
-                            shift_z*dat.z ) /dat.dist
-            shift_x-= beta/(1+beta) * psi_dot_rhat * dat.x/dat.dist
-            shift_y-= beta/(1+beta) * psi_dot_rhat * dat.y/dat.dist
-            shift_z-= beta/(1+beta) * psi_dot_rhat * dat.z/dat.dist
+            psi_dot_rhat = (psi_gal_x*dat.x + \
+                            psi_gal_y*dat.y + \
+                            psi_gal_z*dat.z ) /dat.dist
+            psi_gal_x -= beta/(1+beta) * psi_dot_rhat * dat.x/dat.dist
+            psi_gal_y -= beta/(1+beta) * psi_dot_rhat * dat.y/dat.dist
+            psi_gal_z -= beta/(1+beta) * psi_dot_rhat * dat.z/dat.dist
+            #psi_gal_x -= f/(1+f) * psi_dot_rhat * dat.x/dat.dist
+            #psi_gal_y -= f/(1+f) * psi_dot_rhat * dat.y/dat.dist
+            #psi_gal_z -= f/(1+f) * psi_dot_rhat * dat.z/dat.dist
 
-        #-- remove RSD from original positions (cp) of 
+        #-- Remove RSD from original positions (cp) of 
         #-- galaxies to give new positions (np)
         #-- these positions are then used in next determination of Psi, 
         #-- assumed to not have RSD.
         #-- the iterative procued then uses the new positions as 
         #-- if they'd been read in from the start
-        psi_dot_rhat = (shift_x*dat.x+shift_y*dat.y+shift_z*dat.z)/dat.dist
+        psi_dot_rhat = (psi_gal_x*dat.x+psi_gal_y*dat.y+psi_gal_z*dat.z)/dat.dist
         dat.newx = dat.x + f * psi_dot_rhat * dat.x/dat.dist 
         dat.newy = dat.y + f * psi_dot_rhat * dat.y/dat.dist 
         dat.newz = dat.z + f * psi_dot_rhat * dat.z/dat.dist 
 
         if verbose:
-            print('Debug: first 10 x,y,z, and total shifts')
+            print('Debug: first 10 |psi|, psi_dot_rhat')
             for i in range(10):
-                shift = np.sqrt(shift_x[i]**2 + shift_y[i]**2 + shift_z[i]**2)
-                print('%.3f %.3f %.3f %.3f ' % (shift_x[i], shift_y[i], shift_z[i], shift))
+                psi = np.sqrt(psi_gal_x[i]**2 + psi_gal_y[i]**2 + psi_gal_z[i]**2)
+                print(f'{i} \t {psi} \t {psi_dot_rhat[i]}')
 
 
         self.deltar = deltar
@@ -327,10 +309,10 @@ class Recon:
         (no need to do this for galaxies, since it already happens during the iteration loop)
         """
         
-        shift_x, shift_y, shift_z = \
-            self.get_shift(self.ran.x, self.ran.y, self.ran.z, 
+        psi_x, psi_y, psi_z = \
+            self.get_psi(self.ran.x, self.ran.y, self.ran.z, 
                            self.psi_x.real, self.psi_y.real, self.psi_z.real)
-        psi_dot_rhat = (shift_x * self.ran.x + shift_y * self.ran.y + shift_z * self.ran.z) / self.ran.dist
+        psi_dot_rhat = (psi_x * self.ran.x + psi_y * self.ran.y + psi_z * self.ran.z) / self.ran.dist
         self.ran.newx = self.ran.x + self.f * psi_dot_rhat * self.ran.x / self.ran.dist
         self.ran.newy = self.ran.y + self.f * psi_dot_rhat * self.ran.y / self.ran.dist
         self.ran.newz = self.ran.z + self.f * psi_dot_rhat * self.ran.z / self.ran.dist
@@ -340,12 +322,12 @@ class Recon:
         This method subtracts full displacement field as in standard BAO reconstruction"""
 
         for c in [self.dat, self.ran]:
-            shift_x, shift_y, shift_z = \
-                self.get_shift(c.newx, c.newy, c.newz, 
+            psi_x, psi_y, psi_z = \
+                self.get_psi(c.newx, c.newy, c.newz, 
                                self.psi_x.real, self.psi_y.real, self.psi_z.real)
-            c.newx += shift_x
-            c.newy += shift_y
-            c.newz += shift_z
+            c.newx += psi_x
+            c.newy += psi_y
+            c.newz += psi_z
 
     def summary(self):
 
@@ -361,7 +343,7 @@ class Recon:
                   (np.std(s), np.percentile(s, 16), np.percentile(s, 84), np.min(s), np.max(s)))
 
 
-    def get_shift(self, x, y, z, f_x, f_y, f_z):
+    def get_psi(self, x, y, z, f_x, f_y, f_z):
 
         xmin = self.xmin
         ymin = self.ymin
@@ -380,9 +362,9 @@ class Recon:
         ddy = ypos-j
         ddz = zpos-k
 
-        shift_x = np.zeros(x.size)
-        shift_y = np.zeros(x.size)
-        shift_z = np.zeros(x.size)
+        psi_x = np.zeros(x.size)
+        psi_y = np.zeros(x.size)
+        psi_z = np.zeros(x.size)
 
         for ii in range(2):
             for jj in range(2):
@@ -391,14 +373,16 @@ class Recon:
                                ((1-ddy)+jj*(-1+2*ddy))*\
                                ((1-ddz)+kk*(-1+2*ddz))  )
                     pos = (i+ii, j+jj, k+kk)
-                    shift_x += f_x[pos]*weight
-                    shift_y += f_y[pos]*weight
-                    shift_z += f_z[pos]*weight
+                    psi_x += f_x[pos]*weight
+                    psi_y += f_y[pos]*weight
+                    psi_z += f_z[pos]*weight
 
-        return shift_x, shift_y, shift_z
+        return psi_x, psi_y, psi_z
 
     def export_cart(self, root):
-        
+        ''' Export data and randoms to text file containing cartesian positions 
+            root.dat.txt and root.ran.txt
+        ''' 
         lines = ['%f %f %f %f'%(xx, yy, zz, ww) for (xx, yy, zz, ww) \
                in zip(self.dat.x, self.dat.y, self.dat.z, self.dat.we)]
         fout = open(root+'.dat.txt', 'w') 
