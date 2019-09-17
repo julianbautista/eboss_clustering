@@ -10,17 +10,27 @@ def get_cosmo(z=0.75, name='challenge'):
 def test(cosmo, 
          pars_to_test= {'at': [0.95, 1.05, 11], 
                         'ap': [0.95, 1.05, 11], 
-                        'beta': [0.25, 0.45, 11], 
+                        'bias': [1., 3., 11], 
+                        'beta': [0., 1., 11], 
                         'sigma_rec': [0, 50, 20],
                         'sigma_s': [0, 6, 11]},
          pars_center = {'ap': 1.0, 'at': 1.0, 
-                        'bias': 1.0, 'beta': 0.6, 
+                        'bias': 2.3, 'beta': 0.35, 
                         'sigma_par': 10., 'sigma_per': 6., 
                         'sigma_s': 4., 'sigma_rec': 0.},
          rmin=1., rmax=200., scale_r=2, ell_max=4, 
          decoupled=False, no_peak=False, 
          figsize=(12, 5)):
 
+        labels = {'at': r'$\alpha_\perp$', 'ap': r'$\alpha_\parallel$',
+                  'beta': r'$\beta$', 'bias': r'$b$', 
+                  'sigma_rec': r'$\Sigma_{\rm rec}$', 
+                  'sigma_par': r'$\Sigma_{\parallel}$',
+                  'sigma_per': r'$\Sigma_{\perp}$',
+                  'sigma_s': r'$\Sigma_{\rm s}$'}
+   
+        title = ', '.join( [labels[par]+f' = {pars_center[par]:.1f}' for par in pars_center])
+        print(title)
         r = np.linspace(rmin, rmax, 2000)
         nell = ell_max//2+1
         lss = ['-', '--', ':', '-.']
@@ -41,7 +51,7 @@ def test(cosmo,
                 for j in range(nell):
                     ax[j].plot(r, xi_mult[j]*r**scale_r, 
                                color=colors[i], lw=1, 
-                               label=r'$\alpha_{\rm iso} = %.2f$'%aiso)
+                               label=r'$\alpha_{{\rm iso}} = %.2f$'%aiso)
                     ylabel = r'$\xi_{%d}$'%(j*2)
                     if scale_r:
                         ylabel+= r'$r^%d [h^{-%d} \mathrm{Mpc}^{%d}]$'%\
@@ -91,15 +101,17 @@ def test(cosmo,
                 for j in range(nell):
                     ax[j].plot(r, xi_mult[j]*r**scale_r, 
                                color=colors[i], 
-                               label=f'{par} = {val:.3f}')
+                               label=labels[par]+f' = {val:.2f}')
                     ylabel = r'$\xi_{%d}$'%(j*2)
                     if scale_r:
-                        ylabel+= r'$r^%d [h^{-%d} \mathrm{Mpc}^{%d}]$'%\
+                        ylabel+= r'$r^%d \ [h^{-%d}  \mathrm{Mpc}^{%d}]$'%\
                                    (scale_r, scale_r, scale_r)
                     ax[j].set_ylabel(ylabel)
-            ax[-1].set_xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
-            ax[-1].legend(loc=0, fontsize=10)
+                    ax[j].set_xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
+            ax[0].legend(loc=0, fontsize=10, ncol=2)
+            plt.suptitle(title)
             plt.tight_layout() 
+            fig.subplots_adjust(top=0.9)
 
 def test_xu2012():
     cosmo = get_cosmo(z=0.35)
