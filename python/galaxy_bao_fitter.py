@@ -6,6 +6,7 @@ import fftlog
 import iminuit
 import sys
 import scipy.interpolate 
+import scipy.linalg
 import copy
 from scipy.optimize import curve_fit
 from scipy.ndimage import gaussian_filter1d
@@ -31,7 +32,17 @@ class Cosmo:
             pars = camb.CAMBparams()
             if name == 'challenge':
                 pars.set_cosmology(H0=67.6, ombh2=0.0220,  
-                                    omch2=0.11902256, 
+                                    omch2=0.11901745, 
+                                    YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
+                pars.InitPower.set_params(As=2.0406217009089533e-09, ns=0.97)
+            elif name == 'cosmo1':
+                pars.set_cosmology(H0=67.6, ombh2=0.0220,  
+                                    omch2=0.10073838, 
+                                    YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
+                pars.InitPower.set_params(As=2.0406217009089533e-09, ns=0.97)
+            elif name == 'cosmo2':
+                pars.set_cosmology(H0=67.6, ombh2=0.0220,  
+                                    omch2=0.13729646, 
                                     YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
                 pars.InitPower.set_params(As=2.0406217009089533e-09, ns=0.97)
             elif name == 'qpm':
@@ -277,8 +288,8 @@ class Cosmo:
 
         #-- If all parameters are the same as the previous calculation,
         #-- simply return the same power spectrum (no broadband)
-        if hasattr(self, 'pars') and pars==self.pars:
-            return self.pk2d_out
+        #if hasattr(self, 'pars') and pars==self.pars:
+        #    return self.pk2d_out
 
         #-- Read alphas and BAO damping terms
         if 'aiso' in pars:
@@ -387,7 +398,7 @@ class Cosmo:
 
         self.ak2d = ak2d
         self.pk2d_out = pk2d_out
-        self.pars = copy.deepcopy(pars)
+        #self.pars = copy.deepcopy(pars)
 
         return pk2d_out
 
@@ -497,14 +508,17 @@ class Data:
         coss = coss[:, w]
         coss = coss[w, :]
         
+        self.rr = rr
         self.r = np.unique(rr)
         self.cf = cf
         self.coss = coss
+        self.nmul = rr.size//self.r.size
         print('Covariance matrix is positive definite?', np.all(np.linalg.eigvals(coss)>0))
         self.icoss = np.linalg.inv(coss)
         if nmocks:
             correction = (1 - (cf.size + 1.)/(nmocks-1))
             self.icoss *= correction
+    
 
 class Model:
 
@@ -562,16 +576,16 @@ class Model:
             pars_names += ['beam']
             pars['beam'] = 4.
 
-        if fit_broadband:
-            for i, bb_power in enumerate(np.arange(bb_min, bb_max+1)):
-                pars_names.append('bb_%d_mono'%i)
-                pars['bb_%d_mono'%i] = 0.
-                if fit_quad:
-                    pars_names.append('bb_%d_quad'%i)
-                    pars['bb_%d_quad'%i] = 0.
-                if fit_hexa:
-                    pars_names.append('bb_%d_hexa'%i)
-                    pars['bb_%d_hexa'%i] = 0.
+        #if fit_broadband:
+        #    for i, bb_power in enumerate(np.arange(bb_min, bb_max+1)):
+        #        pars_names.append('bb_%d_mono'%i)
+        #        pars['bb_%d_mono'%i] = 0.
+        #        if fit_quad:
+        #            pars_names.append('bb_%d_quad'%i)
+        #            pars['bb_%d_quad'%i] = 0.
+        #        if fit_hexa:
+        #            pars_names.append('bb_%d_hexa'%i)
+        #            pars['bb_%d_hexa'%i] = 0.
 
         self.bb_min = bb_min
         self.bb_max = bb_max
@@ -597,29 +611,46 @@ class Model:
         return cf_out.ravel()
 
     def get_broadband(self, rout, pars):
-        if hasattr(self, 'pars_bb') and self.pars_bb==pars and self.bb.size % rout.size == 0:
-            return self.bb
+        #if hasattr(self, 'pars_bb') and self.pars_bb==pars and self.bb.size % rout.size == 0:
+        #    return self.bb
   
         monobb = rout*0.
         quadbb = rout*0.
         hexabb = rout*0.
-        for i in range(self.bb_max-self.bb_min+1):
-            power = self.bb_min + i
-            monobb += pars['bb_%d_mono'%i]*((rout/200)**power)
+       
+        if hasattr(self, 'powers'):
+            powers = self.powers
+        else: 
+            power_min = self.bb_min
+            power_max = self.bb_max
+            powers = np.arange(power_min, power_max+1)
+            self.powers = powers
+        for i in range(powers.size):
+            power = powers[i]
+            #monobb += pars['bb_%d_mono'%i]*((rout)**power)
+            coeff = np.prod([pars[f'bb_{j}_mono'] for j in range(i+1)])
+            monobb += coeff * rout**power 
             if self.fit_quad:
-                quadbb += pars['bb_%d_quad'%i]*((rout/200)**power)
+                coeff = np.prod([pars[f'bb_{j}_quad'] for j in range(i+1)])
+                quadbb += coeff * rout**power 
+                #quadbb += pars['bb_%d_quad'%i]*((rout)**power)
             if self.fit_hexa: 
-                hexabb += pars['bb_%d_hexa'%i]*((rout/200)**power)
+                coeff = np.prod([pars[f'bb_{j}_hexa'] for j in range(i+1)])
+                hexabb += coeff * rout**power 
+                #hexabb += pars['bb_%d_hexa'%i]*((rout)**power)
 
         bb = monobb
         if self.fit_quad:
             bb = np.append(bb, quadbb)
         if self.fit_hexa:
             bb = np.append(bb, hexabb)
-        self.pars_bb = copy.deepcopy(pars)
+        #elf.pars_bb = copy.deepcopy(pars)
         self.bb = bb
 
         return bb
+
+
+
 
 class Chi2: 
 
@@ -630,6 +661,7 @@ class Chi2:
             self.model = model
         if fin:
             self.read_galaxy_pars(fin, z=z)
+
 
     def read_galaxy_pars(self, fin, z=0.71):
 
@@ -682,12 +714,46 @@ class Chi2:
         pars_cosmo = {par: pars[par] for par in pars if not par.startswith('bb')}
         model = self.model.value(r, pars_cosmo)
 
-        if self.model.fit_broadband:
-            pars_bb = {par: pars[par] for par in pars if par.startswith('bb')}
-            bb = self.model.get_broadband(r, pars_bb)
-            model += bb
+        #if self.model.fit_broadband:
+            
+         #   bb = self.fit_broadband(cf-model) 
+            #pars_bb = {par: pars[par] for par in pars if par.startswith('bb')}
+            #bb = self.model.get_broadband(r, pars_bb)
+         #   model += bb
 
         return model
+    
+    def setup_broadband_H(self, r=None, bb_min=None, bb_max=None):
+        if r is None:
+            r = self.data.rr
+        if bb_min is None:
+            bb_min = self.model.bb_min
+        if bb_max is None:
+            bb_max = self.model.bb_max
+
+        rr = np.unique(r)
+        nmul = r.size//rr.size
+        power = np.arange(bb_min, bb_max+1) 
+        H = rr[:, None]**power 
+        H = np.kron(np.eye(nmul), H)
+        self.H = H
+        return H
+    
+
+    def get_broadband(self, bb_pars, r=None, H=None):
+
+        H = self.setup_broadband_H(r) if H is None else H 
+        return H.dot(bb_pars)
+
+    def fit_broadband(self, residual, icoss, H):
+       
+        if hasattr(self, 'inv_HWH'):
+            inv_HWH = self.inv_HWH 
+        else:
+            inv_HWH = np.linalg.inv(H.T.dot(icoss.dot(H)))
+            self.inv_HWH = inv_HWH
+        bb_pars = inv_HWH.dot(H.T.dot(icoss.dot(residual)))
+        return bb_pars
 
     def __call__(self, *p):
         pars = {}
@@ -697,6 +763,11 @@ class Chi2:
         model = self.get_model(self.data.r, pars)
         residual = self.data.cf - model
         inv_cov = self.data.icoss
+        if self.model.fit_broadband:
+            bb_pars = self.fit_broadband(residual, inv_cov, self.H)
+            bb = self.get_broadband(bb_pars, H=self.H)
+            self.bb_pars = bb_pars
+            residual -= bb
 
         chi2 = np.dot(residual, np.dot(inv_cov, residual))
 
@@ -735,10 +806,12 @@ class Chi2:
                              print_level=1, errordef=1, 
                              **init_pars)
         #print(mig.get_param_states())
+        #mig.tol = 0.01
         imin = mig.migrad()
         print(mig.get_param_states())
 
         #mig.hesse()
+        print(mig.matrix(correlation=True))
         self.mig = mig
         self.imin = imin
         self.is_valid = imin[0]['is_valid']
@@ -746,7 +819,7 @@ class Chi2:
         self.errors = mig.errors
         self.chi2min = mig.fval
         self.ndata = self.data.cf.size
-        self.npars = mig.narg
+        self.npars = mig.narg+self.bb_pars.size
         self.covariance = mig.covariance
         for par in self.model.pars_names:
             if mig.fitarg['fix_'+par]:
@@ -772,13 +845,14 @@ class Chi2:
 
         data = self.data
         model = self.model
+        nmul = 1+1*model.fit_quad+1*model.fit_hexa
         r = data.r
         cf = data.cf
         dcf = np.sqrt(np.diag(data.coss))
         r_model = np.linspace(r.min(), r.max(), 200)
         cf_model = self.get_model(r_model, self.best_pars)
-
-        nmul = 1+1*model.fit_quad+1*model.fit_hexa
+        bb_model = self.get_broadband(self.bb_pars, r=np.tile(r_model, nmul))
+        cf_model += bb_model
 
         if fig is None:
             fig, axes = plt.subplots(nrows=1, ncols=nmul, figsize=figsize)
@@ -793,13 +867,17 @@ class Chi2:
             y_data  =  cf[i*r.size:(i+1)*r.size]
             dy_data = dcf[i*r.size:(i+1)*r.size]
             y_model = cf_model[i*r_model.size:(i+1)*r_model.size]
+            b_model = bb_model[i*r_model.size:(i+1)*r_model.size]
             y_data *= r**scale_r
             dy_data *= r**scale_r
             y_model *= r_model**scale_r 
+            b_model *= r_model**scale_r
 
             if not model_only:
                 ax.errorbar(r, y_data, dy_data, fmt='o', ms=4)
-            ax.plot(r_model, y_model, label=label)
+            color = next(ax._get_lines.prop_cycler)['color']
+            ax.plot(r_model, y_model, color=color, label=label)
+            ax.plot(r_model, b_model, '--', color=color)
 
             if scale_r!=0:
                 ax.set_ylabel(r'$r^{%d} \xi_{%d}$ [$h^{%d}$ Mpc$^{%d}]$'%\
@@ -872,9 +950,9 @@ class Chi2:
             for j in range(par_nsteps[1]):
                 value1 = par_grid1[j]
                 init_pars[par_names[1]] = value1
-                mig = iminuit.Minuit(self, \
-                         forced_parameters=self.model.pars_names, \
-                         print_level=1, errordef=1, \
+                mig = iminuit.Minuit(self,
+                         forced_parameters=self.model.pars_names, 
+                         print_level=0, errordef=1, 
                          **init_pars)
                 mig.migrad()
                 print( 'scanning: %s = %.5f   %s = %.5f    chi2 = %.4f'%\
@@ -898,10 +976,10 @@ class Chi2:
         self.bestx=bestx
         self.chi2min=chi2min
 
-    def plot_scan1d(self, ls=None, \
+    def plot_scan1d(self, ls=None, 
                     color=None,  alpha=None, label=None):
 
-        plt.plot(self.x, self.chi2scan-self.chi2min, ls=ls, \
+        plt.plot(self.x, self.chi2scan-self.chi2min, ls=ls, 
                 color=color, alpha=alpha, label=label)
 
     def read_scan2d(self, fin):
@@ -933,7 +1011,7 @@ class Chi2:
         self.besty=besty
         self.chi2min=chi2min
 
-    def plot_scan2d(self, levels=[2.3, 6.18, 11.83, 19.33], ls=['-', '--', '-.', ':'], \
+    def plot_scan2d(self, levels=[2.3, 6.18, 11.83, 19.33], ls=['-', '--', '-.', ':'], 
                     color='b',  alpha=1.0, label=None, scale_dist=0,
                     transverse=False, DM_rd=None, DH_rd=None):
 

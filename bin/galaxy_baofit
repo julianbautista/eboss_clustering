@@ -12,6 +12,13 @@ from cf_tools import Multipoles
 
 parser = argparse.ArgumentParser()
 parser.add_argument('ini', help='Configuration file for fit')
+parser.add_argument('--data-name', help='Input correlation function')
+parser.add_argument('--cov-name', help='Input covariance matrix')
+parser.add_argument('--output', help='Root for outputs')
+parser.add_argument('--rmin', help='Minimum separation', 
+                    type=float)
+parser.add_argument('--rmax', help='Maximum separation', 
+                    type=float)
 args = parser.parse_args()
 config = configparser.ConfigParser()
 config.read(args.ini)
@@ -23,7 +30,8 @@ print('')
 
 ##-- Read input multipoles 
 print('Reading data and covariance matrix')
-m = Multipoles(config['data']['name'])
+data_name = config['data']['name'] if args.data_name is None else args.data_name
+m = Multipoles(data_name)
 z_eff = float(config['data']['z_eff'])
 
 options = {}
@@ -36,16 +44,18 @@ if not options['fit_hexa']:
     m.hexa = None
 
 #-- Read covariance matrix
-m.read_cov(config['covariance']['name'])
+cov_name = config['covariance']['name'] if args.cov_name is None else args.cov_name
+m.read_cov(cov_name)
 m.coss *= float(config['covariance']['scalefactor'])
 nmocks = int(config['covariance']['nmocks'])
 
 #-- Define output name
-rmin = float(config['cuts']['rmin'])
-rmax = float(config['cuts']['rmax'])
+rmin = float(config['cuts']['rmin']) if args.rmin is None else args.rmin
+rmax = float(config['cuts']['rmax']) if args.rmax is None else args.rmax
 
+output_root = config['data']['output'] if args.output is None else args.output
 output = ''.join([
-        config['data']['output'],
+        output_root,
         f'-rmin{rmin:.1f}-rmax{rmax:.1f}',
         '-bb'  *(options['fit_broadband']),
         '-quad'*(options['fit_quad']),
@@ -103,6 +113,7 @@ decoupled     = config['model']['decoupled'] == 'True'
 bb_min = int(config['broadband']['bb_min'])
 bb_max = int(config['broadband']['bb_max'])
 
+
 print('')
 print('Setting up the model:', cosmology)
 model = Model(fit_broadband = options['fit_broadband'], 
@@ -125,6 +136,7 @@ model = Model(fit_broadband = options['fit_broadband'],
 print('\nStarting chi2 minimization')
 sec0 = time.time()
 chi2 = Chi2(data=data, model=model)
+chi2.setup_broadband_H()
 chi2.fit(fixes=fixes, priors=priors, limits=limits) 
 chi2.export(output+'.pars')
 sec1 = time.time()
@@ -159,6 +171,7 @@ if options['fit_nopeak']:
                           bb_min = bb_min, 
                           bb_max = bb_max)
     chi2_nopeak = Chi2(data=data, model=model_nopeak)
+    chi2_nopeak.setup_broadband_H()
     chi2_nopeak.fit(fixes=fixes_nopeak, priors=priors, limits=limits)
     chi2_nopeak.export(output+'-nopeak.pars')
     sec2 = time.time()
