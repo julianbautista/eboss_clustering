@@ -984,9 +984,7 @@ class Chi2:
     def read_scan2d(self, fin):
 
         sfin = fin.split('.')
-        #par_name0 = sfin[-3]
-        #par_name1 = sfin[-2]
-
+        
         x, y, chi2 = np.loadtxt(fin, unpack=1)
         bestx = x[0]
         besty = y[0]
@@ -1004,42 +1002,9 @@ class Chi2:
         self.chi2scan2d = chi2scan2d
         self.x=x
         self.y=y
-        #self.par_name0=par_name0
-        #self.par_name1=par_name1
         self.bestx=bestx
         self.besty=besty
         self.chi2min=chi2min
-
-    def plot_scan2d(self, levels=[2.3, 6.18, 11.83, 19.33], ls=['-', '--', '-.', ':'], 
-                    color='b',  alpha=1.0, label=None, scale_dist=0,
-                    transverse=False, DM_rd=None, DH_rd=None):
-
-        if transverse:
-            x = self.y
-            y = self.x
-            chi2 = self.chi2scan2d.T
-        else:
-            x = self.x
-            y = self.y
-            chi2 = self.chi2scan2d
-
-        for i in range(len(levels)):
-            if i!=0:
-                label=None
-            if scale_dist:
-                x *= DM_rd
-                y *= DH_rd
-            plt.contour(x, y, chi2-self.chi2min,
-                        levels=[levels[i]], linestyles=[ls[i]], colors=color, alpha=alpha)
-
-    def get_parameter(self, par_name='alpha'):
-
-        if par_name in self.minos:
-            par_dict = self.minos[par_name]
-            return par_dict['min'], par_dict['lower'], par_dict['upper']
-        else:
-            mig = self.mig
-            return mig.values[par_name], mig.errors[par_name]
 
     def export(self, fout):
 
