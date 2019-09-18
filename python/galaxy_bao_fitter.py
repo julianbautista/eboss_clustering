@@ -1022,10 +1022,11 @@ class Chi2:
     def export_covariance(self, fout):
 
         fout = open(fout, 'w')
-        print('par_name1 par_name2 covariance', file=fout)
+        print('# par_name1 par_name2 covariance corr_coeff', file=fout)
         cov = self.covariance
         for k in cov:
-            print(f'{k[0]} {k[1]} {cov[k]}', file=fout)
+            corr = cov[k]/np.sqrt(cov[(k[0], k[0])]*cov[(k[1], k[1])])
+            print(f'{k[0]} {k[1]} {cov[k]} {corr}', file=fout)
         fout.close()  
 
 
