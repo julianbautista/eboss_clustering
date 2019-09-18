@@ -320,6 +320,7 @@ class Cosmo:
         sigma_rec = pars['sigma_rec']
 
         #-- Read parameters for cross-correlation
+        #-- or making them equal if fitting auto-correlation
         if 'bias2' in pars:
             bias2 = pars['bias2']
         else:
@@ -351,36 +352,38 @@ class Cosmo:
 
 
         #-- Sideband model (no BAO peak)
+        #-- If decoupled, do not scale sideband by alpha
         if decoupled:
-            pk2d_s = np.outer(np.ones_like(mu), pk_sideband)
+            pk2d_nopeak = np.outer(np.ones_like(mu), pk_sideband)
         else:
-            pk2d_s = np.interp(ak2d, k, pk_sideband)
+            pk2d_nopeak = np.interp(ak2d, k, pk_sideband)
 
         if no_peak:
-            pk2d_out = pk2d_s 
+            pk2d = pk2d_nopeak 
         else:
             #-- Anisotropic damping applied to BAO peak only
-            sigma_v2 = (1-mu**2)*sigma_per**2/2+ mu**2*sigma_par**2/2 
-            sigma_v2_k2 = np.outer(sigma_v2, k**2)
-            apk2d_peak = np.interp(ak2d, k, pk-pk_sideband)
-            pk2d_out  = apk2d_peak * np.exp(-sigma_v2_k2)
-            pk2d_out += pk2d_s
+            sigma_nl = (1-mu**2)*sigma_per**2/2+ mu**2*sigma_par**2/2 
+            sigma_nl_k2 = np.outer(sigma_nl, k**2)
+            #-- Scale BAO peak part by alpha
+            pk2d_peak = np.interp(ak2d, k, pk-pk_sideband)
+            pk2d  = pk2d_peak * np.exp(-sigma_nl_k2)
+            pk2d += pk2d_nopeak
 
         
         #-- Compute Kaiser redshift space distortions with reconstruction damping
         if sigma_rec == 0:
             recon_damp = np.ones(k.size)
         else:
-            recon_damp = 1 - np.exp(-k**2*sigma_rec**2/2) #-- nk size
+            recon_damp = 1 - np.exp(-k**2*sigma_rec**2/2) 
         
         recon_damp_mu2 = np.outer(mu**2, recon_damp)
         kaiser = bias * bias2 * (1+beta*recon_damp_mu2) * (1+beta2*recon_damp_mu2)
 
         #-- Fingers of God
         if pars['sigma_s'] != 0:
-            dnl = 1./( 1 + np.outer(mu**2, k**2)*pars['sigma_s']**2/2)
+            fog = 1./( 1 + np.outer(mu**2, k**2)*pars['sigma_s']**2/2)
         else:
-            dnl = 1
+            fog = 1
 
         #-- This parameters is for intensity mapping only
         if 'beam' in pars:
@@ -391,10 +394,10 @@ class Cosmo:
             pk2d_out *= pars['t_hi']
         
         pk2d_out *= kaiser
-        pk2d_out *= dnl**2 
+        pk2d_out *= fog**2 
 
         #if not decoupled:
-        #pk2d_out /= (at**2*ap)
+        #    pk2d_out /= (at**2*ap)
 
         self.ak2d = ak2d
         self.pk2d_out = pk2d_out
