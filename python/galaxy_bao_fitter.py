@@ -387,23 +387,22 @@ class Cosmo:
 
         #-- This parameters is for intensity mapping only
         if 'beam' in pars:
-            pk2d_out *= np.exp( - pars['beam']**2*np.outer(1-mu**2, k**2)/2) 
+            pk2d *= np.exp( - pars['beam']**2*np.outer(1-mu**2, k**2)/2) 
         
         #-- This parameters is for intensity mapping only
         if 'THI' in pars:
-            pk2d_out *= pars['t_hi']
+            pk2d *= pars['t_hi']
         
-        pk2d_out *= kaiser
-        pk2d_out *= fog**2 
+        pk2d *= kaiser
+        pk2d *= fog**2 
 
         #if not decoupled:
         #    pk2d_out /= (at**2*ap)
 
         self.ak2d = ak2d
-        self.pk2d_out = pk2d_out
-        #self.pars = copy.deepcopy(pars)
+        self.pk2d = pk2d
 
-        return pk2d_out
+        return pk2d
 
     def get_pk_multipoles(self, mu2d, pk2d, ell_max=4):
         
@@ -438,20 +437,18 @@ class Cosmo:
             xi_mult.append(xiout*norm)
             ell+=2 
 
-        return rout, np.array(xi_mult)
+        return np.array(xi_mult)
 
     def get_xi_multipoles(self, rout, pars, ell_max=4, decoupled=False, no_peak=False, r0=1.):
 
         pk2d = self.get_2d_power_spectrum(pars, 
-                            ell_max=ell_max, no_peak=no_peak, decoupled=decoupled)
+                                          ell_max = ell_max, 
+                                          no_peak = no_peak, 
+                                          decoupled = decoupled)
         pk_mult = self.get_pk_multipoles(self.mu2d, pk2d, ell_max=ell_max)
-        r, xi_out = self.get_xi_multipoles_from_pk(self.k, pk_mult, 
-                        output_r=rout, r0=r0)
-        self.xi_out = xi_out*1
-
-        return xi_out
-
-         
+        xi_mult = self.get_xi_multipoles_from_pk(self.k, pk_mult, 
+                                                    output_r=rout, r0=r0)
+        return xi_mult
 
     def get_dist_rdrag(self):
         
@@ -614,8 +611,6 @@ class Model:
         return cf_out.ravel()
 
     def get_broadband(self, rout, pars):
-        #if hasattr(self, 'pars_bb') and self.pars_bb==pars and self.bb.size % rout.size == 0:
-        #    return self.bb
   
         monobb = rout*0.
         quadbb = rout*0.
@@ -647,7 +642,6 @@ class Model:
             bb = np.append(bb, quadbb)
         if self.fit_hexa:
             bb = np.append(bb, hexabb)
-        #elf.pars_bb = copy.deepcopy(pars)
         self.bb = bb
 
         return bb
@@ -755,7 +749,9 @@ class Chi2:
         else:
             inv_HWH = np.linalg.inv(H.T.dot(icoss.dot(H)))
             self.inv_HWH = inv_HWH
+
         bb_pars = inv_HWH.dot(H.T.dot(icoss.dot(residual)))
+
         return bb_pars
 
     def __call__(self, *p):
