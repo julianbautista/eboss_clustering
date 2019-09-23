@@ -225,7 +225,7 @@ class Cosmo:
     def get_sideband_power(self):
         ''' Get power spectrum of sideband '''
 
-        ks, pks = self.get_correlation_function(k=self.r, pk=self.xi_sideband,\
+        ks, pks = self.get_correlation_function(k=self.r, pk=self.xi_sideband,
                                                 inverse=1, r=self.k)
         self.pk_sideband = pks
 
@@ -262,21 +262,21 @@ class Cosmo:
         xi_smooth = gaussian_filter1d(xi_peak, sigma=sigma_nl/dr)
         return xi_smooth 
 
-    def get_multipoles(self, r, xi, f):
-        ''' Compute multipoles from isotropic correlation function 
-            with linear redshift-space distortions
-            following Hamilton 1992
-
-            Currently not used but here for reference
-        '''
-        xib   = np.array([ np.sum(xi[:i]*r[:i]**2) for i in range(r.size)])\
-                * 3./r**3 * np.gradient(r)
-        xibb = np.array([ np.sum(xi[:i]*r[:i]**4) for i in range(r.size)])\
-                * 5./r**5 * np.gradient(r)
-        xi0 = (1+2./3*f+1./5*f**2)*xi
-        xi2 = (4./3*f + 4./7*f**2)*(xi-xib)
-        xi4 = 8./35*f**2*(xi + 2.5*xib - 3.5*xibb)
-        return xi0, xi2, xi4
+    #def get_multipoles(self, r, xi, f):
+    #    ''' Compute multipoles from isotropic correlation function 
+    #        with linear redshift-space distortions
+    #        following Hamilton 1992
+    #
+    #        Currently not used but here for reference
+    #    '''
+    #    xib   = np.array([ np.sum(xi[:i]*r[:i]**2) for i in range(r.size)])\
+    #            * 3./r**3 * np.gradient(r)
+    #    xibb = np.array([ np.sum(xi[:i]*r[:i]**4) for i in range(r.size)])\
+    #            * 5./r**5 * np.gradient(r)
+    #    xi0 = (1+2./3*f+1./5*f**2)*xi
+    #    xi2 = (4./3*f + 4./7*f**2)*(xi-xib)
+    #    xi4 = 8./35*f**2*(xi + 2.5*xib - 3.5*xibb)
+    #    return xi0, xi2, xi4
 
     def set_2d_arrays(self, nmu=201):
 
@@ -284,7 +284,8 @@ class Cosmo:
         self.mu2d = np.outer(self.mu, np.ones(self.k.size))
         self.k2d  = np.outer(np.ones(nmu), self.k)
 
-    def get_2d_power_spectrum(self, pars, ell_max=2, no_peak=False, decoupled=False):
+    def get_2d_power_spectrum(self, pars, 
+        ell_max=2, no_peak=False, decoupled=False, window=None):
 
         #-- If all parameters are the same as the previous calculation,
         #-- simply return the same power spectrum (no broadband)
@@ -404,40 +405,73 @@ class Cosmo:
 
         return pk2d
 
-    def get_pk_multipoles(self, mu2d, pk2d, ell_max=4):
-        
-        nk = pk2d.shape[1]
-        pk_mult = np.zeros((ell_max//2+1, nk))
-        for ell in range(0, ell_max+2, 2):
-            Leg = self.Legendre(ell, mu2d)
-            pk_mult[ell//2] = (2*ell+1)*np.trapz(pk2d*Leg, x=mu2d, axis=0)
-        self.pk_mult = pk_mult
 
-        return pk_mult
 
-    def Legendre(self, ell, mu):
+ 
+
+    def legendre(self, ell, mu):
 
         if ell == 0:
-            return 1
+            return mu*0+1
         elif ell == 2:
-            return 0.5*(3*mu**2-1)
+            return 0.5 * (3*mu**2-1)
         elif ell == 4:
-            return 0.125*(35*mu**4 - 30*mu**2 +3)
+            return 1/8 * (35*mu**4 - 30*mu**2 +3)
+        elif ell == 6:
+            return 1/16 * (231*mu**6 - 315*mu**4 + 105*mu**2 - 5)
+        elif ell == 8:
+            return 1/128* (6435*mu**8 - 12012*mu**6 + 6930*mu**4 - 1260*mu**2 + 35)
         else:
             return -1
 
+    def get_multipoles(self, mu, f2d, ell_max=4):
+        ''' Get multipoles of any function of ell 
+            Input
+            -----
+            mu: np.array with shape (nmu) where nmu is the number of mu bins
+            f2d: np.array with shape (nmu, nx) from which the multipoles will be computed    
+            
+            Returns
+            ----
+            f_mult: np.array with shape (nell, nx) 
+        '''
+        
+        nx = f2d.shape[1]
+        nl = ell_max//2+1
+        f_mult = np.zeros((nl, nx))
+        for ell in range(0, ell_max+2, 2):
+            leg = self.legendre(ell, mu)
+            f_mult[ell//2] = (2*ell+1)*np.trapz(f2d*leg[:, None], x=mu, axis=0)
+        return f_mult
+
     def get_xi_multipoles_from_pk(self, k, pk_mult, output_r=None, r0=1.):
 
+        nell = len(pk_mult)
         xi_mult = []
-        ell = 0 
-        for pk in pk_mult:
-            rout, xiout = fftlog.HankelTransform(k, pk, mu=0.5+ell, output_r=output_r,
-                                                 output_r_power=-3, q=1.5, r0=r0)
+        for i in range(nell):
+            pk = pk_mult[i]
+            ell = i*2
+            r, xi = fftlog.HankelTransform(k, pk, mu=0.5+ell, output_r=output_r,
+                                           output_r_power=-3, q=1.5, r0=r0)
             norm = 1/(2*np.pi)**1.5 * (-1)**(ell/2)
-            xi_mult.append(xiout*norm)
-            ell+=2 
+            xi_mult.append(xi*norm)
+        xi_mult = np.array(xi_mult)
+        return r, xi_mult 
 
-        return np.array(xi_mult)
+    def get_pk_multipoles_from_xi(self, r, xi_mult, output_k=None, r0=1.):
+
+        nell = len(xi_mult)
+        pk_mult = []
+        for i in range(nell):
+            xi = xi_mult[i]
+            ell = i*2
+            k, pk = fftlog.HankelTransform(r, xi, mu=0.5+ell, output_r=output_k,
+                                                 output_r_power=-3, q=1.5, r0=r0)
+            #norm = 1/(2*np.pi)**1.5 * (-1)**(ell/2)
+            norm = 1/(2*np.pi)**1.5 * (-1)**(ell/2) * (2*np.pi)**3
+            pk_mult.append(pk*norm)
+        pk_mult = np.array(pk_mult)
+        return k, pk_mult
 
     def get_xi_multipoles(self, rout, pars, ell_max=4, decoupled=False, no_peak=False, r0=1.):
 
@@ -445,10 +479,62 @@ class Cosmo:
                                           ell_max = ell_max, 
                                           no_peak = no_peak, 
                                           decoupled = decoupled)
-        pk_mult = self.get_pk_multipoles(self.mu2d, pk2d, ell_max=ell_max)
-        xi_mult = self.get_xi_multipoles_from_pk(self.k, pk_mult, 
+        pk_mult = self.get_multipoles(self.mu, pk2d, ell_max=ell_max)
+        _, xi_mult = self.get_xi_multipoles_from_pk(self.k, pk_mult, 
                                                     output_r=rout, r0=r0)
         return xi_mult
+
+    def get_pk_multipoles(self, kout, pars, ell_max=4, decoupled=False, no_peak=False, r0=1., apply_window=False):
+
+        pk2d = self.get_2d_power_spectrum(pars, 
+                                          ell_max = ell_max, 
+                                          no_peak = no_peak, 
+                                          decoupled = decoupled)
+        pk_mult = self.get_multipoles(self.mu, pk2d, ell_max=ell_max)
+
+        if apply_window:
+            _, xi_mult = self.get_xi_multipoles_from_pk(self.k, pk_mult, output_r=self.r) 
+            xi_convol = self.get_convoled_xi(xi_mult, self.window_mult)
+            _, pk_mult_out = self.get_pk_multipoles_from_xi(self.r, xi_convol, output_k=kout)
+        else:
+            pk_mult_out = []
+            for pk in pk_mult:
+                pk_mult_out.append(np.interp(kout, self.k, pk))
+        pk_mult_out = np.array(pk_mult_out)
+
+        return pk_mult_out
+
+    def read_window_function(self, window_file):
+        data = np.loadtxt(window_file)
+        r_window = data[0]
+        window = data[1:]
+
+        window_mult = []
+        for win in window:
+           window_spline = scipy.interpolate.InterpolatedUnivariateSpline(r_window, win)
+           window_mult.append(window_spline(self.r))
+        window_mult = np.array(window_mult)
+        self.window_mult = window_mult
+
+    def get_convolved_xi(self, xi_mult, window_mult):
+        ''' Compute convolved multipoles of correlation function 
+            given Eq. 19, 20 and 21 of Beutler et al. 2017 
+        ''' 
+        xi = xi_mult
+        win = window_mult
+
+        #-- Mono
+        xi_mono = xi[0]*win[0] + xi[1]*(1/5 * win[1]) + xi[2]*(1/9*win[2])
+        #-- Quad 
+        xi_quad = xi[0]*win[1] + xi[1]*(      win[0] + 2/7    *win[1] + 2/7     *win[2]) \
+                               + xi[2]*(2/7 * win[1] + 100/693*win[2] + 25/143  *win[3])
+        #-- Hexa
+        xi_hexa = xi[0]*win[2] + xi[1]*(18/35*win[1] + 20/77  *win[2] + 45/143  *win[3]) \
+                + xi[2]*(win[0] + 20/77 *win[1] + 162/1001*win[2] + 20/143*win[3] + 490/2431*win[4])
+    
+        xi_conv = np.array([xi_mono, xi_quad, xi_hexa])
+        return xi_conv
+
 
     def get_dist_rdrag(self):
         
