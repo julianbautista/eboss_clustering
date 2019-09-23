@@ -124,6 +124,29 @@ def test_xu2012():
                            'sigma_par': 0.0, 'sigma_per': .0, 'sigma_s': 0, 
                            'sigma_rec': 0.0})
 
+def test_window_function():
+
+    cosmo = Cosmo(z=0.75) 
+    cosmo.read_window_function('window_test.txt') 
+
+    pars_center = {'ap': 1.0, 'at': 1.0,
+                   'bias': 2.3, 'beta': 0.35,
+                   'sigma_par': 10., 'sigma_per': 6.,
+                   'sigma_s': 4., 'sigma_rec': 0.}
+    
+    kout = np.linspace(0.01, 0.3, 300)
+
+    pk_mult0 = cosmo.get_pk_multipoles(kout, pars_center, apply_window=False)
+    pk_mult1 = cosmo.get_pk_multipoles(kout, pars_center, apply_window=True )
+    for i in range(len(pk_mult0)):
+        ell = 2*i
+        plt.plot(kout, pk_mult0[i]*kout, f'C{i}--', label=r'$\ell = {ell}$ Without Window'.format(ell=ell))
+        plt.plot(kout, pk_mult1[i]*kout, f'C{i}-', label=r'$\ell = {ell}$ With Window'.format(ell=ell))
+    plt.legend()
+    plt.ylabel(r'$k P_{\ell}(k)$')
+
+
+
 #if __name__ == '__main__':
 #    cosmo = get_cosmo()
 #    test(cosmo, saveroot='baofit_prerec_decoupled')
