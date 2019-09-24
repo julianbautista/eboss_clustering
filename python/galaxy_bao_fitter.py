@@ -851,7 +851,7 @@ class Chi2:
         if self.model.fit_broadband:
             bb_pars = self.fit_broadband(residual, inv_cov, self.H)
             bb = self.get_broadband(bb_pars, H=self.H)
-            self.bb_pars = bb_pars
+            #self.bb_pars = bb_pars
             residual -= bb
 
         chi2 = np.dot(residual, np.dot(inv_cov, residual))
@@ -895,6 +895,14 @@ class Chi2:
         imin = mig.migrad()
         print(mig.get_param_states())
 
+        if self.model.fit_broadband:
+            print('Broadband terms')    
+            model = self.get_model(self.data.r, mig.values)
+            residual = self.data.cf - model
+            inv_cov = self.data.icoss
+            bb_pars = self.fit_broadband(residual, inv_cov, self.H)
+            print(bb_pars)
+
         #mig.hesse()
         print(mig.matrix(correlation=True))
         self.mig = mig
@@ -904,7 +912,8 @@ class Chi2:
         self.errors = mig.errors
         self.chi2min = mig.fval
         self.ndata = self.data.cf.size
-        self.npars = mig.narg+self.bb_pars.size
+        self.npars = mig.narg+bb_pars.size
+        self.bb_pars = bb_pars
         self.covariance = mig.covariance
         for par in self.model.pars_names:
             if mig.fitarg['fix_'+par]:
@@ -1091,6 +1100,25 @@ class Chi2:
         self.bestx=bestx
         self.besty=besty
         self.chi2min=chi2min
+
+    def plot_scan2d(self, levels=[2.3, 6.18, 11.83], ls=['-', '--', ':'], 
+                    color='b',  alpha=1.0, label=None, scale_dist= False):
+
+        for i in range(len(levels)):
+            if i!=0:
+                label=None
+            if scale_dist:
+                DM_rd = self.DM_rd
+                DH_rd = self.DH_rd
+                x = self.x*DM_rd
+                y = self.y*DH_rd
+            else:
+                x = self.x*1.
+                y = self.y*1.
+            plt.contour(x, y, self.chi2scan2d-self.chi2min, 
+                        levels=[levels[i]], 
+                        linestyles=[ls[i]], colors=color, alpha=alpha,
+                        label=label)
 
     def export(self, fout):
 

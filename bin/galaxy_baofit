@@ -19,6 +19,7 @@ parser.add_argument('--rmin', help='Minimum separation',
                     type=float)
 parser.add_argument('--rmax', help='Maximum separation', 
                     type=float)
+parser.add_argument('--cov-scalefactor', type=float, help='Covariance matrix scale factor')
 args = parser.parse_args()
 config = configparser.ConfigParser()
 config.read(args.ini)
@@ -46,7 +47,7 @@ if not options['fit_hexa']:
 #-- Read covariance matrix
 cov_name = config['covariance']['name'] if args.cov_name is None else args.cov_name
 m.read_cov(cov_name)
-m.coss *= float(config['covariance']['scalefactor'])
+m.coss *= float(config['covariance']['scalefactor']) if args.cov_scalefactor is None else args.cov_scalefactor
 nmocks = int(config['covariance']['nmocks'])
 
 #-- Define output name
