@@ -912,8 +912,10 @@ class Chi2:
         self.errors = mig.errors
         self.chi2min = mig.fval
         self.ndata = self.data.cf.size
-        self.npars = mig.narg+bb_pars.size
-        self.bb_pars = bb_pars
+        self.npars = mig.narg
+        if self.model.fit_broadband:
+            self.npars += bb_pars.size
+            self.bb_pars = bb_pars
         self.covariance = mig.covariance
         for par in self.model.pars_names:
             if mig.fitarg['fix_'+par]:
@@ -945,8 +947,12 @@ class Chi2:
         dcf = np.sqrt(np.diag(data.coss))
         r_model = np.linspace(r.min(), r.max(), 200)
         cf_model = self.get_model(r_model, self.best_pars)
-        bb_model = self.get_broadband(self.bb_pars, r=np.tile(r_model, nmul))
-        cf_model += bb_model
+        if hasattr(self, 'bb_pars'):
+            bb_model = self.get_broadband(self.bb_pars, r=np.tile(r_model, nmul))
+            cf_model += bb_model
+            bb=True
+        else:
+            bb=False
 
         if fig is None:
             fig, axes = plt.subplots(nrows=1, ncols=nmul, figsize=figsize)
@@ -961,17 +967,19 @@ class Chi2:
             y_data  =  cf[i*r.size:(i+1)*r.size]
             dy_data = dcf[i*r.size:(i+1)*r.size]
             y_model = cf_model[i*r_model.size:(i+1)*r_model.size]
-            b_model = bb_model[i*r_model.size:(i+1)*r_model.size]
             y_data *= r**scale_r
             dy_data *= r**scale_r
             y_model *= r_model**scale_r 
-            b_model *= r_model**scale_r
+            if bb:
+                b_model = bb_model[i*r_model.size:(i+1)*r_model.size]
+                b_model *= r_model**scale_r
 
             if not model_only:
                 ax.errorbar(r, y_data, dy_data, fmt='o', ms=4)
             color = next(ax._get_lines.prop_cycler)['color']
             ax.plot(r_model, y_model, color=color, label=label)
-            ax.plot(r_model, b_model, '--', color=color)
+            if bb:
+                ax.plot(r_model, b_model, '--', color=color)
 
             if scale_r!=0:
                 ax.set_ylabel(r'$r^{%d} \xi_{%d}$ [$h^{%d}$ Mpc$^{%d}]$'%\

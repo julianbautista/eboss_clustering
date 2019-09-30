@@ -105,6 +105,36 @@ class Corr:
                                 1./np.sqrt(self.dr)+\
                                 1./np.sqrt(self.rr))
 
+    def rebin_mu(self, rebin_mu=1, shift_mu=0):
+
+        #-- Get number of bins
+        nmu = (self.nmu)//rebin_mu
+        ifirst = shift_mu
+        ilast = nmu*rebin_mu+shift_mu
+
+        #-- For mu and r, take the mean (they should be all the same)
+        for field in ['mu2d', 'r2d']:
+            x = self.__dict__[field]
+            x = np.mean(np.reshape(x[:, ifirst:ilast], (-1, nmu, rebin_mu)), axis=2)
+            self.__dict__[field] = x
+
+        #-- For paircounts, do the sum 
+        for field in ['dd', 'dr', 'rr']:
+            x = self.__dict__[field]
+            x = np.sum(np.reshape(x[:, ifirst:ilast], (-1, nmu, rebin_mu)), axis=2)
+            self.__dict__[field] = x
+
+        self.r = np.unique(self.r2d)
+        self.mu = np.unique(self.mu2d)
+        self.nr = self.r.size
+        self.nmu = self.mu.size
+        self.cf = self.dd/self.rr*self.norm_rr/self.norm_dd \
+                  - 2.*self.dr/self.rr*self.norm_rr/self.norm_dr + 1.
+        self.dcf = (1+self.cf)*(1./np.sqrt(self.dd)+\
+                                1./np.sqrt(self.dr)+\
+                                1./np.sqrt(self.rr))
+    
+
     def shape2d(self, x):
         return np.reshape(x, (self.nr, self.nmu))
 
@@ -508,7 +538,7 @@ class Multipoles:
             self.hexa[i] = best_pars['hexa']
 
 
-    def plot(self, fig=None, figsize=(12, 5), errors=0, scale_r=2, **kwargs):
+    def plot(self, fig=None, figsize=(12, 5), errors=0, scale_r=2, tight=True, **kwargs):
 
         has_hexa = True if not self.hexa is None else False
 
@@ -547,7 +577,8 @@ class Multipoles:
                             (scale_r, 2*i, scale_r, scale_r))
             ax.axhline(0, color='k', ls=':')
             ax.set_xlabel(r'$r$ [$h^{-1}$ Mpc]')
-        plt.tight_layout()
+        if tight:
+            plt.tight_layout()
 
         return fig
 
@@ -568,7 +599,7 @@ class Multipoles:
             cc.mono = self.monos[i]
             cc.quad = self.quads[i]
             cc.hexa = self.hexas[i]
-            cc.plot(fig=fig, errors=0, scale_r=scale_r, **kwargs)
+            cc.plot(fig=fig, errors=0, scale_r=scale_r, tight=False, **kwargs)
 
         return fig
 
