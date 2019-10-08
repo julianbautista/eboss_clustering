@@ -13,9 +13,10 @@ from scipy.ndimage import gaussian_filter1d
 
 class Cosmo:
 
-    def __init__(self, z=0.0, name='challenge', norm_pk=False, non_linear=False, 
+    def __init__(self, z=0.0, name='challenge', pars=None, 
+                 norm_pk=False, non_linear=False, 
                  nk=2048, kmax=100., nmu=101):
-        self.get_matter_power_spectrum(z=z, name=name, norm_pk=norm_pk, 
+        self.get_matter_power_spectrum(z=z, name=name, norm_pk=norm_pk, pars=pars,
                                        non_linear=non_linear, kmax=kmax, nk=nk)
         self.r, self.xi = self.get_correlation_function()
         #self.get_sideband()
@@ -68,6 +69,13 @@ class Cosmo:
                                    YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.0,
                                     num_massive_neutrinos=0)
                 pars.InitPower.set_params(As=2.11622e-09, ns=0.9611)
+            elif name == 'nseries':
+                #-- Om=0.286, h=0.7, ns=0.96, Ob=0.047, s8=0.820
+                pars.set_cosmology(H0=70, ombh2=0.02303, 
+                                   omch2=0.11711, 
+                                   YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.0,
+                                    num_massive_neutrinos=0)
+                pars.InitPower.set_params(As=2.14681e-09, ns=0.96)
             else: 
                 print('Error: name of cosmology should be one of the following')
                 print('challenge qpm planck outerrim ezmock')

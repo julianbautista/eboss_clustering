@@ -7,7 +7,6 @@ import healpy as hp
 from astropy.io import fits
 from astropy.table import Table
 from iminuit import Minuit
-import iminuit.frontends
 from scipy.optimize import minimize
 
 class Syst:
@@ -263,14 +262,14 @@ class Syst:
         print('Fitting for:')
         print(self.par_names)
 
-        mig = Minuit(self.get_chi2, throw_nan=False, \
-                             forced_parameters=par_names, \
-                             print_level=1, errordef=1, \
-                             frontend=iminuit.frontends.ConsoleFrontend(), \
-                             **init_pars)
-
+        mig = Minuit(self.get_chi2, throw_nan=False, 
+                     forced_parameters=par_names, 
+                     print_level=1, errordef=1, 
+                     **init_pars)
         mig.tol = 1.0 
         imin = mig.migrad()
+        print(mig.get_param_states())
+        print(mig.matrix(correlation=True))
         self.mig = mig
         self.imin = imin
         self.is_valid = imin[0]['is_valid']
@@ -391,7 +390,7 @@ class Syst:
 
 
 
-def get_pix(nside, ra, dec, nest=0):
+def get_pix(nside, ra, dec, nest=False):
     return hp.ang2pix(nside, np.radians(-dec+90), np.radians(ra), nest=nest)
 
 def flux_to_mag(flux, band, ebv=None):
@@ -405,13 +404,28 @@ def flux_to_mag(flux, band, ebv=None):
         mag -= ext_coeff*ebv
     return mag
 
-def read_systematic_maps(data_ra, data_dec, rand_ra, rand_dec):
-    
-    #-- Dictionaries containing all different systematic values
-    data_syst = {}
-    rand_syst = {}
+def read_systematic_maps(ra=None, dec=None, nside=256):
+    ''' Read different systematics maps from several files 
+        If ra and dec are not provided, they are computed from 
+        a healpix map with the given nside. 
+        
+        Returns: dictionary where keys are the name of systematic
+                 and values are arrays with systematic values 
+                 for all (ra, dec). 
+    ''' 
+    if ra is None:
+        pix = np.arange(hp.nside2npix(nside))
+        th, phi = hp.pix2ang(nside, pix)
+        ra = np.degrees(phi)
+        dec = np.degrees(np.pi/2-th)
 
-    #-- NHI map
+    if np.isnan(ra).any() or np.isnan(dec).any():
+        print('There are NaN in RA or DEC')
+    
+    #-- Dictionaries containing {name of systematic map: array with map values}
+    data_syst = {}
+
+    #-- Read NHI map
     nhi_file = os.environ['EBOSS_CLUSTERING_DIR']+'/etc/NHI_HPX.fits.gz'
     nhi_file = 'toto'
     if os.path.exists(nhi_file):
@@ -422,19 +436,15 @@ def read_systematic_maps(data_ra, data_dec, rand_ra, rand_dec):
         theta, phi = hp.pix2ang(hp.get_nside(nhi), np.arange(nhi.size))
         mtheta, mphi = R(theta, phi)
         nhi_eq = hp.get_interp_val(nhi, mtheta, mphi)
-        data_nhi = nhi_eq[get_pix(hp.get_nside(nhi_eq), data_ra, data_dec)]
-        rand_nhi = nhi_eq[get_pix(hp.get_nside(nhi_eq), rand_ra, rand_dec)]
+        data_nhi = nhi_eq[get_pix(hp.get_nside(nhi_eq), ra, dec)]
         data_syst['log10(NHI)'] = np.log10(data_nhi)
-        rand_syst['log10(NHI)'] = np.log10(rand_nhi)
 
-    #-- SDSS systematics
-    print('Reading maps from ', nhi_file)
+    #-- Read SDSS systematics
     sdss_file = os.environ['EBOSS_CLUSTERING_DIR']+'/etc/SDSSimageprop_Nside512.fits'
     if os.path.exists(sdss_file):
         print('Reading maps from ', sdss_file)
         sdss_syst = Table.read(sdss_file)
-        data_pix = get_pix(512, data_ra, data_dec) 
-        rand_pix = get_pix(512, rand_ra, rand_dec)
+        data_pix = get_pix(512, ra, dec) 
         syst_names = ['EBV', 'AIRMASS',
                       'SKY_G', 'SKY_I', 'SKY_Z', 
                       'PSF_G', 'PSF_I', 'PSF_Z', 
@@ -452,22 +462,19 @@ def read_systematic_maps(data_ra, data_dec, rand_ra, rand_dec):
                     cam = 4
                 depth_minus_ebv = flux_to_mag(sdss_syst[syst_name], cam, ebv=sdss_syst['EBV']).data
                 data_syst[syst_name+'_MINUS_EBV'] = depth_minus_ebv[data_pix]
-                rand_syst[syst_name+'_MINUS_EBV'] = depth_minus_ebv[rand_pix]
             else:
                 data_syst[syst_name] = sdss_syst[syst_name][data_pix].data
-                rand_syst[syst_name] = sdss_syst[syst_name][rand_pix].data
 
-    #-- Star density
+    #-- Read star density
     star_file = os.environ['EBOSS_CLUSTERING_DIR']+'/etc/allstars17.519.9Healpixall256.dat'
     if os.path.exists(star_file):
         print('Reading maps from ', star_file)
         star_density = np.loadtxt(star_file)
-        data_pix = get_pix(256, data_ra, data_dec, nest=1)
-        rand_pix = get_pix(256, rand_ra, rand_dec, nest=1)
+        data_pix = get_pix(256, ra, dec, nest=True)
         data_syst['STAR_DENSITY'] = star_density[data_pix]
-        rand_syst['STAR_DENSITY'] = star_density[rand_pix]
 
-    return data_syst, rand_syst
+
+    return data_syst
 
 
 def fit_slopes_per_xbin(s, x_name, x_data, x_nbins=10, p=1., fit_maps=None, plot_delta=False,
@@ -505,9 +512,9 @@ def fit_slopes_per_xbin(s, x_name, x_data, x_nbins=10, p=1., fit_maps=None, plot
             if save_plot_delta:
                 plt.savefig(f'plots/syst_{sample_root}_bin{i}.pdf')
 
-        chi2_list.append({'before':ss.get_chi2(), 
-                     'global':ss.get_chi2(s.best_pars), 
-                     'bin':ss.get_chi2(ss.best_pars)})
+        chi2_list.append({'before': ss.get_chi2(), 
+                          'global': ss.get_chi2(s.best_pars), 
+                          'bin':    ss.get_chi2(ss.best_pars)})
         slist.append(ss)
 
     return x_bins, chi2_list, slist
@@ -541,7 +548,8 @@ def fit_smooth_slopes_vs_x(x_bins, s_list, chi2_thres=16):
                 ymodel_before = np.polyval(coeff_before, xcen)
                 chi2_before = np.sum((y-ymodel_before)**2/dy**2)
                 if (chi2 < chi2_before - chi2_thres):
-                    print('  ', par_name, ' fit with ', order, 'order poly with chi2= %.1f/%d = %.2f'%(chi2, y.size, chi2/y.size))
+                    print(f'  {par_name} fit with {order}', 
+                          f'order poly with chi2 = {chi2:.1f}/{y.size} = {chi2/y.size:.2f}')
                     coeffs[par_name] = coeff
             else:
                 coeffs[par_name] = coeff
@@ -634,16 +642,16 @@ def plot_chi2_vs_x(x_bins, chi2s, x_name='redshift', title=None):
     if title:
         plt.title(title)
 
-def ra(x):
+def get_ra(x):
     return x-360*(x>300)
 
 #-- Plot extreme values of weights in the sky
 def plot_weights_sky(data_ra, data_dec, data_weightsys, title=None):
     plt.figure(figsize=(12, 7))
-    plt.scatter(ra(data_ra), data_dec, c=data_weightsys, vmin=0.5, vmax=1.5, lw=0, s=2, cmap='jet', label=None)
+    plt.scatter(get_ra(data_ra), data_dec, c=data_weightsys, vmin=0.5, vmax=1.5, lw=0, s=2, cmap='jet', label=None)
     wext = (data_weightsys<0.5)|(data_weightsys > 2.)
     if sum(wext)>0:
-        plt.plot(ra(data_ra[wext]), data_dec[wext], 'ko', ms=4, 
+        plt.plot(get_ra(data_ra[wext]), data_dec[wext], 'ko', ms=4, 
             label=r'$w_{\rm sys} < 0.5 \ {\rm or} \ w_{\rm sys} > 2.$ : %d galaxies'%sum(wext))
     plt.xlabel('RA [deg]')
     plt.ylabel('DEC [deg]')
