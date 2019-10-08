@@ -60,8 +60,8 @@ rand_we = (ran['COMP_BOSS'])[wr]*(ran['WEIGHT_FKP'])[wr]
 
 
 #-- Read systematic values for data and randoms
-data_syst, rand_syst = sf.read_systematic_maps(data_ra, data_dec, rand_ra, rand_dec)
-
+data_syst = sf.get_systematic_maps(data_ra, data_dec)
+rand_syst = sf.get_systematic_maps(rand_ra, rand_dec)
 
 #-- Create fitter object
 s = sf.Syst(data_we, rand_we)

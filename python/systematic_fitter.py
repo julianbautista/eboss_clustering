@@ -58,7 +58,7 @@ class Syst:
             w_rand &= (rand_syst >= syst_min) & \
                       (rand_syst <= syst_max)
             if verbose:
-                print(' ', name, 'from', syst_min, 'to', syst_max)
+                print(f' {name} from {syst_min:.3f} to {syst_max:.3f}')
             
         
         #-- Applying cuts and updating arrays
@@ -146,7 +146,7 @@ class Syst:
             pars : dictionary containing parameters of fit
             syst : dictionary containing systematic values
         '''
-
+       
         #-- same but using dictionary
         model = 1.+pars['constant']
         for p in pars:
@@ -404,29 +404,17 @@ def flux_to_mag(flux, band, ebv=None):
         mag -= ext_coeff*ebv
     return mag
 
-def read_systematic_maps(ra=None, dec=None, nside=256):
-    ''' Read different systematics maps from several files 
-        If ra and dec are not provided, they are computed from 
-        a healpix map with the given nside. 
-        
-        Returns: dictionary where keys are the name of systematic
-                 and values are arrays with systematic values 
-                 for all (ra, dec). 
-    ''' 
-    if ra is None:
-        pix = np.arange(hp.nside2npix(nside))
-        th, phi = hp.pix2ang(nside, pix)
-        ra = np.degrees(phi)
-        dec = np.degrees(np.pi/2-th)
+map_syst = {}
 
-    if np.isnan(ra).any() or np.isnan(dec).any():
-        print('There are NaN in RA or DEC')
+def read_systematic_maps():
+
+    indir = os.environ['EBOSS_CLUSTERING_DIR']+'/etc'
+    files = [indir+'/NHI_HPX.fits.gz',
+             indir+'/SDSSimageprop_Nside512.fits',
+             indir+'/allstars17.519.9Healpixall256.dat']
     
-    #-- Dictionaries containing {name of systematic map: array with map values}
-    data_syst = {}
-
     #-- Read NHI map
-    nhi_file = os.environ['EBOSS_CLUSTERING_DIR']+'/etc/NHI_HPX.fits.gz'
+    nhi_file = indir+'/NHI_HPX.fits.gz'
     nhi_file = 'toto'
     if os.path.exists(nhi_file):
         print('Reading maps from ', nhi_file)
@@ -436,44 +424,67 @@ def read_systematic_maps(ra=None, dec=None, nside=256):
         theta, phi = hp.pix2ang(hp.get_nside(nhi), np.arange(nhi.size))
         mtheta, mphi = R(theta, phi)
         nhi_eq = hp.get_interp_val(nhi, mtheta, mphi)
-        data_nhi = nhi_eq[get_pix(hp.get_nside(nhi_eq), ra, dec)]
-        data_syst['log10(NHI)'] = np.log10(data_nhi)
+        map_syst['log10(NHI)'] = {'map': np.log10(nhi_eq), 'nest': False}
 
     #-- Read SDSS systematics
-    sdss_file = os.environ['EBOSS_CLUSTERING_DIR']+'/etc/SDSSimageprop_Nside512.fits'
+    sdss_file = indir+'/SDSSimageprop_Nside512.fits'
     if os.path.exists(sdss_file):
         print('Reading maps from ', sdss_file)
         sdss_syst = Table.read(sdss_file)
-        data_pix = get_pix(512, ra, dec) 
         syst_names = ['EBV', 'AIRMASS',
-                      'SKY_G', 'SKY_I', 'SKY_Z', 
-                      'PSF_G', 'PSF_I', 'PSF_Z', 
+                      'SKY_G', 'SKY_I', 'SKY_Z',
+                      'PSF_G', 'PSF_I', 'PSF_Z',
                       'DEPTH_G', 'DEPTH_I', 'DEPTH_Z']
 
+        depth_cam = {'DEPTH_G': 1, 'DEPTH_R': 2, 'DEPTH_I': 3, 'DEPTH_Z': 4}
         for syst_name in syst_names:
-            if 1==1 and syst_name.startswith('DEPTH'):
-                if syst_name.endswith('G'):
-                    cam = 1
-                if syst_name.endswith('R'):
-                    cam = 2
-                if syst_name.endswith('I'):
-                    cam = 3
-                if syst_name.endswith('Z'):
-                    cam = 4
-                depth_minus_ebv = flux_to_mag(sdss_syst[syst_name], cam, ebv=sdss_syst['EBV']).data
-                data_syst[syst_name+'_MINUS_EBV'] = depth_minus_ebv[data_pix]
+            x = sdss_syst[syst_name]
+            w = np.isnan(x)
+            x[w] = hp.UNSEEN
+            if syst_name.startswith('DEPTH'):
+                cam = depth_cam[syst_name]
+                depth_minus_ebv = np.zeros_like(x)
+                ebv = sdss_syst['EBV']
+                depth_minus_ebv[~w] = flux_to_mag(x[~w], cam, ebv=ebv[~w]).data
+                depth_minus_ebv[w]  = hp.UNSEEN
+                map_syst[syst_name+'_MINUS_EBV'] = {'map': depth_minus_ebv, 'nest': False}
             else:
-                data_syst[syst_name] = sdss_syst[syst_name][data_pix].data
+                map_syst[syst_name] = {'map': x.data, 'nest': False}
 
     #-- Read star density
-    star_file = os.environ['EBOSS_CLUSTERING_DIR']+'/etc/allstars17.519.9Healpixall256.dat'
+    star_file = indir+'/allstars17.519.9Healpixall256.dat'
     if os.path.exists(star_file):
         print('Reading maps from ', star_file)
         star_density = np.loadtxt(star_file)
-        data_pix = get_pix(256, ra, dec, nest=True)
-        data_syst['STAR_DENSITY'] = star_density[data_pix]
+        map_syst['STAR_DENSITY'] = {'map': star_density, 'nest': True}
 
+ 
+             
+def get_systematic_maps(ra=None, dec=None, nside=256):
+    ''' Read different systematics maps from several files 
+        If ra and dec are not provided, they are computed from 
+        a healpix map with the given nside. 
+        
+        Returns: dictionary where keys are the name of systematic
+                 and values are arrays with systematic values 
+                 for all (ra, dec). 
+    ''' 
+    if map_syst == {}:
+        read_systematic_maps()
 
+    if ra is None:
+        pix = np.arange(hp.nside2npix(nside))
+        th, phi = hp.pix2ang(nside, pix)
+        ra = np.degrees(phi)
+        dec = np.degrees(np.pi/2-th)
+
+    data_syst = {}
+    for field in map_syst:
+        syst = map_syst[field]
+        nside = hp.get_nside(syst['map'])
+        pix = get_pix(nside, ra, dec, nest=syst['nest'])
+        data_syst[field] = syst['map'][pix] 
+    
     return data_syst
 
 
