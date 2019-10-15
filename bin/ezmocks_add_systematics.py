@@ -158,7 +158,7 @@ def add_redshift_failures(mock_full, data, fields_redshift_failures, seed=None):
     #-- Setting randomly failures to imatch = 7
     if not seed is None:
         np.random.seed(seed)
-    w_mock_fail = (np.random.rand(nmock) > ssr) #& (mock_full['IMATCH']==1)
+    w_mock_fail = (np.random.rand(nmock) > ssr) & (mock_full['IMATCH']!=2)
     mock_full['IMATCH'][w_mock_fail] = 7
 
     #-- Compare redshift failure rates
