@@ -57,14 +57,15 @@ def bin_redshift_failures(dat, field='FIBERID', nbins=500, weights=None,
 
     #-- count galaxies in bins of field
     x = dat[field]
-    xmin = x[wall].min()
-    xmax = x[wall].max()
+    w = np.isnan(x) == False
+    xmin = x[wall&w].min()
+    xmax = x[wall&w].max()
     dx = (xmax-xmin)/nbins
     bins = np.linspace(xmin-dx/100, 
                        xmax+dx/100,
                        nbins)
     ngood, bins = np.histogram(x[wgood], bins=bins, weights=weights[wgood])
-    nall,  bins = np.histogram(x[wall] , bins=bins) 
+    nall,  bins = np.histogram(x[wall], bins=bins) 
     return bins, ngood, nall
 
 def error_of_ratio_poisson(a, b):
@@ -211,7 +212,7 @@ def get_fiberid_weights(dat, nbins=126, plotit=False, verbose=False):
     
     return weight_noz 
 
-def plot_failures(dat, weight_noz=None, coeff=None):
+def plot_failures(dat):
     ''' Plot redshift efficiencies as function of 
         several fields before/after corrections '''
 
@@ -223,7 +224,7 @@ def plot_failures(dat, weight_noz=None, coeff=None):
     wall = where_all_spectra(dat)
     wgood = where_good_spectra(dat)
 
-    weight_noz = dat['WEIGHT_NOZ']
+    weight_noz = dat['WEIGHT_NOZ']*1.
 
     #-- plot before/after corrections 
     for field in fields: 
@@ -295,7 +296,6 @@ def get_weights_noz(dat):
     weight_noz *= 1./eff_after
 
     dat['WEIGHT_NOZ'] = weight_noz
-
 
 
 #dat = Table.read('/mnt/lustre/eboss/DR16_LRG_data/v5/eBOSS_LRG_full_SGC_v5.dat.fits')

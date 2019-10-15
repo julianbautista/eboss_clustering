@@ -68,7 +68,7 @@ def add_fiber_collisions(mock_full):
 
     #-- From Arnaud's code, iterate over ntiles
     for ipass in range(ntiles.max()):
-        mask_decollide = (ntiles > ipass) & (has_fiber==False)
+        mask_decollide = (ntiles > ipass) & (has_fiber==False) & (mock_full['IMATCH'] != 2)
         ndecollide = mask_decollide.sum()
         if ndecollide == 0: break
         if ndecollide == 1:
@@ -123,6 +123,9 @@ def correct_fiber_collisions(mock_full):
     mock_full['WEIGHT_CP'] = np.ones(len(mock_full))
     mock_full['WEIGHT_CP'][w_group] = weight_cp
     mock_full['IMATCH'][w_group] = imatch
+
+    w = (mock_full['IMATCH'] == 2)
+    mock_full['WEIGHT_CP'][w] = 1 
 
 
 def add_redshift_failures(mock_full, data, fields_redshift_failures, seed=None):
@@ -220,7 +223,7 @@ def get_systematic_weights(mock, rand,
         use_maps = ['STAR_DENSITY', 'EBV', 'PSF_I', 'DEPTH_I_MINUS_EBV', 'AIRMASS']
         fit_maps = ['STAR_DENSITY', 'EBV']
     if target == 'QSO':
-        use_maps = ['STAR_DENTISY', 'EBV', 'PSF_G', 'SKY_G', 'DEPTH_G_MINUS_EBV', 'AIRMASS']
+        use_maps = ['STAR_DENSITY', 'EBV', 'PSF_G', 'SKY_G', 'DEPTH_G_MINUS_EBV', 'AIRMASS']
         fit_maps = ['STAR_DENSITY', 'DEPTH_G_MINUS_EBV']
 
     #-- Add the systematic maps we want 
@@ -392,20 +395,17 @@ def downsample_photo(dens_model, mock, seed=None):
     return w
 
  
-def read_data(cap=None, data_name=None, rand_name=None, 
+def read_data(target=None, cap=None, data_name=None, rand_name=None, 
     survey_comp=None, survey_geometry=None, nbar_name=None):
 
     #-- Read real data 
     if data_name is None:
-        data_name = f'/mnt/lustre/eboss/DR16_LRG_data/v7/eBOSS_LRG_full_{cap}_v7.dat.fits'
-        rand_name = f'/mnt/lustre/eboss/DR16_LRG_data/v7/eBOSS_LRG_full_{cap}_v7.ran.fits'
-        nbar_name = f'/mnt/lustre/eboss/DR16_LRG_data/v7/nbar_eBOSS_LRG_{cap}_v7.dat'
-        survey_comp = '/mnt/lustre/eboss/DR16_geometry/eBOSS_LRGgeometry_v7.fits'
+        data_name =   f'/mnt/lustre/eboss/DR16_{target}_data/v7/eBOSS_{target}_full_{cap}_v7.dat.fits'
+        rand_name =   f'/mnt/lustre/eboss/DR16_{target}_data/v7/eBOSS_{target}_full_{cap}_v7.ran.fits'
+        nbar_name =   f'/mnt/lustre/eboss/DR16_{target}_data/v7/nbar_eBOSS_{target}_{cap}_v7.dat'
+        survey_comp = f'/mnt/lustre/eboss/DR16_{target}_data/v7/eBOSS_{target}geometry_v7.fits'
         survey_geometry = '/mnt/lustre/eboss/DR16_geometry/eboss_geometry_eboss0_eboss27'
     
-    print('Reading survey geometry from ', survey_geometry)
-    mask_fits = Table.read(survey_geometry+'.fits')
-    mask_ply = pymangle.Mangle((survey_geometry+'.ply'))
         
     print('Reading data from ', data_name)
     data = Table.read(data_name)
@@ -429,6 +429,9 @@ def read_data(cap=None, data_name=None, rand_name=None,
     geo_sector = sec_comp['SECTOR']
     geo_comp   = sec_comp['COMP_BOSS']
 
+    print('Reading survey geometry from ', survey_geometry)
+    mask_fits = Table.read(survey_geometry+'.fits')
+    mask_ply = pymangle.Mangle((survey_geometry+'.ply'))
 
     mask_dict = {'geo_sector': geo_sector, 
                  'geo_comp': geo_comp,
@@ -438,7 +441,55 @@ def read_data(cap=None, data_name=None, rand_name=None,
     nbar = read_nbar(nbar_name)
         
     return data, rand, mask_dict, nbar
-   
+
+def assign_imatch2(data, mock, zmin=0.75, zmax=2.25, seed=None):
+
+    sectors = data['SECTOR']
+
+    im_good = [2]
+    im_all = [1, 2]
+
+    nd = len(data)
+    w_good = np.zeros(nd, dtype=bool)
+    w_all  = np.zeros(nd, dtype=bool)
+
+
+    for im in im_good:
+        w_good |= (data['IMATCH']==im)
+    for im in im_all:
+        w_all  |= (data['IMATCH']==im)
+    
+    w_good &= (data['Z']>=zmin) & (data['Z']<=zmax)
+    w_all  &= (data['Z']>=zmin) & (data['Z']<=zmax)
+
+    count_good = countdup(sectors, weights=w_good)
+    count_all  = countdup(sectors, weights=w_all)
+
+    imatch2_fraction = (count_all>0)*count_good/(count_all+1*(count_all==0))
+    data['IM2_FRAC'] = imatch2_fraction
+
+    im2_frac = Table()
+    im2_frac['SECTOR'] = sectors
+    im2_frac['IM2_FRAC'] = imatch2_fraction
+    im2_frac = unique(im2_frac)
+
+    win = np.in1d(mock['SECTOR'], im2_frac['SECTOR'])
+    print(f' Number of mocks with im2_frac information: {np.sum(win)}/{len(mock)}')
+
+    mock['IM2_FRAC'] = np.interp(mock['SECTOR'], im2_frac['SECTOR'], im2_frac['IM2_FRAC'])
+     
+    if not seed is None:
+        np.random.seed(seed)
+    imatch = mock['IMATCH'] 
+    w = (imatch != -1)
+    w_sub = mock['IM2_FRAC'][w] > np.random.rand(np.sum(w))
+    imatch[w] = 2*(w_sub) + imatch[w]*(~w_sub)
+    mock['IMATCH'] = imatch
+ 
+
+
+    
+
 def get_contaminants(data, fields):
 
     #-- Getting contaminants from data
@@ -520,14 +571,15 @@ def make_clustering_catalog_random(rand, mock, seed=None):
     index = np.arange(len(mock))
     ind = np.random.choice(index, size=len(rand), replace=True)
     
-    fields = ['WEIGHT_FKP', 'WEIGHT_NOZ', 'WEIGHT_CP', 'NZ', 'Z']
+    fields = ['WEIGHT_FKP', 'WEIGHT_NOZ', 'WEIGHT_CP', 'WEIGHT_SYSTOT', 'NZ', 'Z']
     for f in fields:
         rand_clust[f] = mock[f][ind]
 
     #-- As in real data:
-    rand_clust['WEIGHT_SYSTOT'] = rand_clust['COMP_BOSS']*1
+    rand_clust['WEIGHT_SYSTOT'] *= rand_clust['COMP_BOSS']
 
     w = (rand_clust['COMP_BOSS'] > 0.5) & (rand_clust['sector_SSR'] > 0.5) 
+
     return rand_clust[w]
 
 
@@ -537,12 +589,13 @@ def get_imatch_stats(mock, zmin=0.55, zmax=1.05):
     for im in imatch:
         w = mock['IMATCH'] == im
         print(im, np.sum(w))
-        if im == 1:
+        if im == 1 or im == 2:
             ww = (mock['Z'][w] >= zmin)&(mock['Z'][w] <= zmax)
             ngals = np.sum(ww)
-            wgals = np.sum(mock['WEIGHT_CP'][w][ww]*mock['WEIGHT_NOZ'][w][ww])
             print(im, f'{ngals} at {zmin} < z < {zmax}')
-            print(im, f'{wgals:.1f} sum of (wcp*wnoz) at {zmin} < z < {zmax}')
+            if 'WEIGHT_CP' in mock.colnames:
+                wgals = np.sum(mock['WEIGHT_CP'][w][ww]*mock['WEIGHT_NOZ'][w][ww])
+                print(im, f'{wgals:.1f} sum of (wcp*wnoz) at {zmin} < z < {zmax}')
 
 def plot_completeness(mock, data, field='COMP_BOSS', vmin=0.5, vmax=1):
 
@@ -560,8 +613,15 @@ def plot_completeness(mock, data, field='COMP_BOSS', vmin=0.5, vmax=1):
     ax[1].set_xlabel('RA [deg]')
     plt.tight_layout()
 
-def main(cap, ifirst, ilast):
-    data, rand_data, mask_dict, nbar_data = read_data(cap=cap)
+def main(target, cap, ifirst, ilast, zmin, zmax, P0):
+
+    print(f'Target: {target}')
+    print(f'cap:    {cap}')
+    print(f'zmin:   {zmin}')
+    print(f'zmax:   {zmax}')
+    print(f'P0:     {P0}')
+
+    data, rand_data, mask_dict, nbar_data = read_data(target=target, cap=cap)
 
     #-- Get stars, bad targets, unpluggged fibers and the following columns
     fields_redshift_failures = ['XFOCAL', 'YFOCAL', 'PLATE', 'MJD', 'FIBERID', 
@@ -573,12 +633,13 @@ def main(cap, ifirst, ilast):
     bad_targets = get_contaminants(data, fields_bad_targets)
 
     #-- Fit for photo-systematics on data and obtain a density model for sub-sampling mocks
-    syst_obj, density_model_data = get_systematic_weights(data, rand_data)
+    syst_obj, density_model_data = get_systematic_weights(data, rand_data, plotit=False,
+                                                          target=target, zmin=zmin, zmax=zmax)
 
     #-- Setup directories
-    input_dir  = f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_LRG_v7.0'
-    output_dir = f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_LRG_v7.0_syst'
-    rand_name  = input_dir + f'/random/random_20x_eBOSS_LRG_{cap}_v7.fits'
+    input_dir  = f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_{target}_v7.0'
+    output_dir = f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_{target}_v7.0_syst'
+    rand_name  = input_dir + f'/random/random_20x_eBOSS_{target}_{cap}_v7.fits'
 
     #-- Read randoms just once
     print('')
@@ -586,9 +647,11 @@ def main(cap, ifirst, ilast):
     rand0 = Table.read(rand_name)
 
     for imock in range(ifirst, ilast):
-        mock_name_in  = input_dir + f'/eBOSS_LRG/EZmock_eBOSS_LRG_{cap}_v7_{imock:04d}.dat'
-        mock_name_out = output_dir+ f'/eBOSS_LRG/EZmock_eBOSS_LRG_{cap}_v7_{imock:04d}.dat.fits'
-        rand_name_out = output_dir+ f'/eBOSS_LRG/EZmock_eBOSS_LRG_{cap}_v7_{imock:04d}.ran.fits'
+        mock_name_in  = input_dir + f'/eBOSS_{target}/EZmock_eBOSS_{target}_{cap}_v7_{imock:04d}.dat'
+        mock_name_out = output_dir+ f'/eBOSS_{target}/EZmock_eBOSS_{target}_{cap}_v7_{imock:04d}.dat.fits'
+        mask_name_out = output_dir+ f'/eBOSS_{target}/EZmock_eBOSS_{target}_{cap}_v7_{imock:04d}.mask.fits'
+        nbar_name_out = output_dir+ f'/eBOSS_{target}/EZmock_eBOSS_{target}_{cap}_v7_{imock:04d}.nbar.txt'
+        rand_name_out = output_dir+ f'/eBOSS_{target}/EZmock_eBOSS_{target}_{cap}_v7_{imock:04d}.ran.fits'
 
         #-- Read mock
         print('')
@@ -614,7 +677,7 @@ def main(cap, ifirst, ilast):
         print(f' Fraction kept after fiber comp downsampling: {comp_ratio:.4f}')
 
         #-- Compute original density
-        nbar_mock0 = compute_nbar(mock0, nbar_data['z_edges'], nbar_data['shell_vol'])
+        nbar_mock0 = compute_nbar(mock0, nbar_data['z_edges'], nbar_data['shell_vol'], P0=P0)
         w = nbar_mock0['nbar']>0
         nbar_mock0 = np.median(nbar_mock0['nbar'][w])
         print(f' Original number density (assumed constant): {nbar_mock0*1e4:.2f} x 1e-4')
@@ -646,6 +709,9 @@ def main(cap, ifirst, ilast):
         mock['IMATCH'][~w_comp] = -1
         print(f' Fraction kept after fiber comp downsampling: {comp_ratio:.4f}')
 
+        if target=='QSO':
+            assign_imatch2(data, mock, zmin=zmin, zmax=zmax, seed=imock)
+
         #-- Add data contaminants to mock
         mock_full = vstack([mock, bad_targets])
 
@@ -668,30 +734,33 @@ def main(cap, ifirst, ilast):
         print('')
         print('Correcting for redshift failures...')
         redshift_failures.get_weights_noz(mock_full)
+        mock_full['WEIGHT_NOZ'][mock_full['IMATCH']==2] = 1  
         #redshift_failures.plot_failures(mock_full)
 
         mock_full['COMP_BOSS'] = fiber_completeness(mock_full) 
         mock_full['sector_SSR'] = sector_ssr(mock_full) 
-      
+
+        mask = unique(mock_full['SECTOR', 'COMP_BOSS', 'sector_SSR'])     
+ 
         #-- Make random catalog for this mock 
         assign_sectors(rand, mask_dict)
         rand_new = make_randoms(mock_full, rand, seed=imock)
 
         #-- Compute nbar
-        nbar_mock = compute_nbar(mock_full, nbar_data['z_edges'], nbar_data['shell_vol'])
+        nbar_mock = compute_nbar(mock_full, nbar_data['z_edges'], nbar_data['shell_vol'], P0=P0)
         #plt.plot(nbar_data['z_cen'], nbar_data['nbar'], 'C0')
         #plt.plot(nbar_mock['z_cen'], nbar_mock['nbar'], 'C1', alpha=0.3)
         #continue
  
         #-- Compute FKP weights
-        compute_weight_fkp(mock_full, nbar_mock)
-        compute_weight_fkp(rand_new, nbar_mock)
+        compute_weight_fkp(mock_full, nbar_mock, P0=P0)
+        compute_weight_fkp(rand_new, nbar_mock, P0=P0)
      
         #-- Correct photometric systematics
         print('')
         print('Getting photo-systematic weights...')
         s, density_model_mock = get_systematic_weights(mock_full, rand_new,
-                            target='LRG', zmin=0.6, zmax=1.0,
+                            target=target, zmin=zmin, zmax=zmax,
                             random_fraction=1, seed=imock, nbins=20, plotit=False)
 
         #-- Make clustering catalog
@@ -704,14 +773,19 @@ def main(cap, ifirst, ilast):
         mock_clust.write(mock_name_out, overwrite=True) 
         print('Exporting random to', mock_name_out)
         rand_clust.write(rand_name_out, overwrite=True) 
+        print('Exporting mask to ', mask_name_out)
+        mask.write(mask_name_out, overwrite=True)
        
         if imock == 1:
             mock_full.write(mock_name_out.replace('.dat.fits', '_full.dat.fits'), overwrite=True)
             rand_new.write(rand_name_out.replace('.ran.fits', '_full.ran.fits'), overwrite=True)
 
- 
-if len(sys.argv) == 4:
-    main(sys.argv[1], int(sys.argv[2]), int(sys.argv[3]))
+#-- This should be done with .ini file ... 
+if len(sys.argv) == 8:
+    main(sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), 
+         float(sys.argv[5]), float(sys.argv[6]), float(sys.argv[7]))
+else:
+    print('python ezmocks_add_systematics.py target cap ifirst ilast zmin zmax P0')
 
 
 
