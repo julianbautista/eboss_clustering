@@ -392,12 +392,21 @@ def downsample_photo(dens_model, mock, seed=None):
     return w
 
  
-def read_data(cap):
+def read_data(cap=None, data_name=None, rand_name=None, 
+    survey_comp=None, survey_geometry=None, nbar_name=None):
 
     #-- Read real data 
-    data_name = f'/mnt/lustre/eboss/DR16_LRG_data/v7/eBOSS_LRG_full_{cap}_v7.dat.fits'
-    rand_name = f'/mnt/lustre/eboss/DR16_LRG_data/v7/eBOSS_LRG_full_{cap}_v7.ran.fits'
-
+    if data_name is None:
+        data_name = f'/mnt/lustre/eboss/DR16_LRG_data/v7/eBOSS_LRG_full_{cap}_v7.dat.fits'
+        rand_name = f'/mnt/lustre/eboss/DR16_LRG_data/v7/eBOSS_LRG_full_{cap}_v7.ran.fits'
+        nbar_name = f'/mnt/lustre/eboss/DR16_LRG_data/v7/nbar_eBOSS_LRG_{cap}_v7.dat'
+        survey_comp = '/mnt/lustre/eboss/DR16_geometry/eBOSS_LRGgeometry_v7.fits'
+        survey_geometry = '/mnt/lustre/eboss/DR16_geometry/eboss_geometry_eboss0_eboss27'
+    
+    print('Reading survey geometry from ', survey_geometry)
+    mask_fits = Table.read(survey_geometry+'.fits')
+    mask_ply = pymangle.Mangle((survey_geometry+'.ply'))
+        
     print('Reading data from ', data_name)
     data = Table.read(data_name)
     print('Reading randoms from ', rand_name)
@@ -414,23 +423,19 @@ def read_data(cap):
     data['Z'][w] = -1
 
     #-- Read mask files
-    geo = '/mnt/lustre/eboss/DR16_geometry/eBOSS_LRGgeometry_v7.fits'
-    print('Reading completeness info from ', geo)
-    geometry = Table.read(geo) 
-    sec_comp = unique(geometry['SECTOR', 'COMP_BOSS'])
+    print('Reading completeness info from ', survey_comp)
+    survey_comp = Table.read(survey_comp) 
+    sec_comp = unique(survey_comp['SECTOR', 'COMP_BOSS'])
     geo_sector = sec_comp['SECTOR']
     geo_comp   = sec_comp['COMP_BOSS']
 
-    survey_geometry = '/mnt/lustre/eboss/DR16_geometry/eboss_geometry_eboss0_eboss27'
-    mask_ply = pymangle.Mangle(survey_geometry+'.ply')
-    mask_fits = Table.read(survey_geometry+'.fits')
 
     mask_dict = {'geo_sector': geo_sector, 
                  'geo_comp': geo_comp,
                  'mask_ply': mask_ply,
                  'mask_fits': mask_fits}
 
-    nbar = read_nbar(f'/mnt/lustre/eboss/DR16_LRG_data/v7/nbar_eBOSS_LRG_{cap}_v7.dat')
+    nbar = read_nbar(nbar_name)
         
     return data, rand, mask_dict, nbar
    
@@ -556,7 +561,7 @@ def plot_completeness(mock, data, field='COMP_BOSS', vmin=0.5, vmax=1):
     plt.tight_layout()
 
 def main(cap, ifirst, ilast):
-    data, rand_data, mask_dict, nbar_data = read_data(cap)
+    data, rand_data, mask_dict, nbar_data = read_data(cap=cap)
 
     #-- Get stars, bad targets, unpluggged fibers and the following columns
     fields_redshift_failures = ['XFOCAL', 'YFOCAL', 'PLATE', 'MJD', 'FIBERID', 
