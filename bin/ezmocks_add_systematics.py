@@ -450,12 +450,12 @@ def assign_sectors(mock, mask_dict):
 
     #-- Get information from mask 
     mock_polyid = mask_dict['mask_ply'].polyid(mock['RA'], mock['DEC'])
-    mock['SECTOR'] = mask_dict['mask_fits']['SECTOR'][mock_polyid]
-    mock['NTILES'] = mask_dict['mask_fits']['NTILES'][mock_polyid]
-    mock['COMP_BOSS_IN'] = np.interp(mock['SECTOR'], 
-                                     mask_dict['geo_sector'], 
-                                     mask_dict['geo_comp']) 
-    
+    sector = mask_dict['mask_fits']['SECTOR'][mock_polyid]
+    ntiles = mask_dict['mask_fits']['NTILES'][mock_polyid]
+    comp_boss = np.interp(sector, mask_dict['geo_sector'], mask_dict['geo_comp'])
+    mock['SECTOR'] = sector*(mock_polyid>=0) 
+    mock['NTILES'] = ntiles*(mock_polyid>=0)
+    mock['COMP_BOSS_IN'] = comp_boss*(mock_polyid>=0) 
  
 def make_randoms(mock, rand, seed=None):
 

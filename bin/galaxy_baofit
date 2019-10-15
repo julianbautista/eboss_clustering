@@ -15,6 +15,7 @@ parser.add_argument('ini', help='Configuration file for fit')
 parser.add_argument('--data-name', help='Input correlation function')
 parser.add_argument('--cov-name', help='Input covariance matrix')
 parser.add_argument('--output', help='Root for outputs')
+parser.add_argument('--cosmology', help='Name of fiducial cosmology')
 parser.add_argument('--rmin', help='Minimum separation', 
                     type=float)
 parser.add_argument('--rmax', help='Maximum separation', 
@@ -106,7 +107,7 @@ data = Data(m.r, m.mono, m.coss,
 
 
 #-- Initiate model with BAO peak
-cosmology     = config['model']['cosmology']
+cosmology     = config['model']['cosmology'] if args.cosmology is None else args.cosmology
 norm_pk       = config['model']['norm_pk'] == 'True'
 non_linear_pk = config['model']['non_linear_pk'] == 'True'
 decoupled     = config['model']['decoupled'] == 'True'
