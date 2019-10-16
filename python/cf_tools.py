@@ -538,19 +538,28 @@ class Multipoles:
             self.hexa[i] = best_pars['hexa']
 
 
-    def plot(self, fig=None, figsize=(12, 5), errors=0, scale_r=2, tight=True, **kwargs):
+    def plot(self, fig=None, figsize=(12, 5), 
+             plot_errors=False, show_errors=False, 
+             scale_r=2, tight=True, **kwargs):
 
         has_hexa = True if not self.hexa is None else False
 
         r = self.r
-        y1 = self.mono  * (1 + r**scale_r) 
-        y2 = self.quad * (1 + r**scale_r)
+        if plot_errors:
+            y1 = self.dmono  * (1 + r**scale_r) 
+            y2 = self.dquad * (1 + r**scale_r)
+        else:
+            y1 = self.mono  * (1 + r**scale_r) 
+            y2 = self.quad * (1 + r**scale_r)
         y = [y1, y2]
         if has_hexa:
-            y3 = self.hexa * (1 + r**scale_r)
+            if plot_errors:
+                y3 = self.dhexa * (1 + r**scale_r)
+            else:
+                y3 = self.hexa * (1 + r**scale_r)
             y = [y1, y2, y3]
 
-        if errors:
+        if show_errors:
             dy1 = self.dmono * (1 + r**scale_r)
             dy2 = self.dquad * (1 + r**scale_r)
             dy = [dy1, dy2]
@@ -565,16 +574,23 @@ class Multipoles:
 
         for i in range(len(y)):
             ax = axes[i]
-            if errors:
+            if show_errors:
                 ax.errorbar(r, y[i], dy[i], **kwargs)
             else:
                 ax.plot(r, y[i], **kwargs)
  
             if scale_r == 0:
-                ax.set_ylabel(r'$\xi_%d$'%(i*2))
+                if plot_errors:
+                    ax.set_ylabel(r'$\sigma(\xi_%d)$'%(i*2))
+                else:
+                    ax.set_ylabel(r'$\xi_%d$'%(i*2))
             else:
-                ax.set_ylabel(r'$r^{%d} \xi_{%d} \ [h^{-%d} {\rm Mpc}^{%d}]$'%\
-                            (scale_r, 2*i, scale_r, scale_r))
+                if plot_errors:
+                    ax.set_ylabel(r'$r^{%d} \sigma(\xi_{%d}) \ [h^{-%d} {\rm Mpc}^{%d}]$'%\
+                                (scale_r, 2*i, scale_r, scale_r))
+                else:
+                    ax.set_ylabel(r'$r^{%d} \xi_{%d} \ [h^{-%d} {\rm Mpc}^{%d}]$'%\
+                                (scale_r, 2*i, scale_r, scale_r))
             ax.axhline(0, color='k', ls=':')
             ax.set_xlabel(r'$r$ [$h^{-1}$ Mpc]')
         if tight:
