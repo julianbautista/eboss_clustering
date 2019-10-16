@@ -546,25 +546,25 @@ class Multipoles:
 
         r = self.r
         if plot_errors:
-            y1 = self.dmono  * (1 + r**scale_r) 
-            y2 = self.dquad * (1 + r**scale_r)
+            y1 = self.dmono  * (r**scale_r) 
+            y2 = self.dquad * (r**scale_r)
         else:
-            y1 = self.mono  * (1 + r**scale_r) 
-            y2 = self.quad * (1 + r**scale_r)
+            y1 = self.mono  * (r**scale_r) 
+            y2 = self.quad * (r**scale_r)
         y = [y1, y2]
         if has_hexa:
             if plot_errors:
-                y3 = self.dhexa * (1 + r**scale_r)
+                y3 = self.dhexa * (r**scale_r)
             else:
-                y3 = self.hexa * (1 + r**scale_r)
+                y3 = self.hexa * (r**scale_r)
             y = [y1, y2, y3]
 
         if show_errors:
-            dy1 = self.dmono * (1 + r**scale_r)
-            dy2 = self.dquad * (1 + r**scale_r)
+            dy1 = self.dmono * (r**scale_r)
+            dy2 = self.dquad * (r**scale_r)
             dy = [dy1, dy2]
             if has_hexa:
-                dy3 = self.dhexa * (1 + r**scale_r)
+                dy3 = self.dhexa * (r**scale_r)
                 dy = [dy1, dy2, dy3] 
 
         if fig is None:
