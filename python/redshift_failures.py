@@ -121,7 +121,7 @@ def fit_fiberid(dat, nbins=500, verbose=False):
                             field='FIBERID', nbins=nbins)
     x = 0.5*(bins[1:]+bins[:-1])
 
-    w = (nall > 50)&(nall-ngood > 0)
+    w = (nall > 20)&(nall-ngood > 0)
     nall = nall[w]
     ngood = ngood[w]
     x = x[w]
