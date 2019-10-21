@@ -61,14 +61,15 @@ def add_fiber_collisions(mock_full):
 
     nmock = len(mock_full)
     mock_full['INGROUP'] = np.zeros(nmock, dtype=int)
-    has_fiber = np.zeros(nmock, dtype=bool)
+
+    has_fiber = (mock_full['IMATCH'] == 2)
 
     #-- This information was obtained from the mask file
     ntiles = mock_full['NTILES']
 
     #-- From Arnaud's code, iterate over ntiles
     for ipass in range(ntiles.max()):
-        mask_decollide = (ntiles > ipass) & (has_fiber==False) & (mock_full['IMATCH'] != 2)
+        mask_decollide = (ntiles > ipass) & (has_fiber==False) 
         ndecollide = mask_decollide.sum()
         if ndecollide == 0: break
         if ndecollide == 1:
@@ -86,10 +87,15 @@ def add_fiber_collisions(mock_full):
         if ipass==0:
             groupid = labels['Label'].compute()
             mock_full['INGROUP'][mask_decollide] = groupid
-        print(f'  TSR at pass {ipass+1}: {np.sum(has_fiber)/has_fiber.size:.4f}')
+        print(f'  TSR at pass {ipass+1}: {np.sum(has_fiber)/nmock:.4f}')
 
+    #-- At this point, imatch = 0 or -1 for all galaxies
+    #-- Assign imatch = 1 for all galaxies with imatch = 0
     w = (mock_full['IMATCH'] == 0)&(has_fiber)
     mock_full['IMATCH'][w] = 1
+    #-- Assign imatch = 0 for targets including bad_targets that don't have a fiber 
+    w = (mock_full['IMATCH'] != 1)&(~has_fiber)
+    mock_full['IMATCH'][w] = 0
 
 def correct_fiber_collisions(mock_full):
    
@@ -140,6 +146,10 @@ def add_redshift_failures(mock_full, data, fields_redshift_failures, seed=None):
              (imatch==15) 
     data_spec = data[w_spec] 
 
+    #-- Remove failures already in mock, which come from real data (contaminants)
+    w = mock_full['IMATCH'] == 7 
+    mock_full['IMATCH'][w] = 6 
+
     #-- Match mock and data 
     id1, id2, dist = spherematch(mock_full['RA'], mock_full['DEC'], 
                                  data_spec['RA'], data_spec['DEC'], angle=0.2)
@@ -153,12 +163,13 @@ def add_redshift_failures(mock_full, data, fields_redshift_failures, seed=None):
     mock_full.rename_column('WEIGHT_NOZ', 'WEIGHT_NOZ_DATA')
 
     #-- Define ssr: spectroscopic success rate using data weights
-    ssr = 1/(mock_full['WEIGHT_NOZ_DATA'] + 1*(mock_full['WEIGHT_NOZ_DATA']==0))
+    ssr = 1/(mock_full['WEIGHT_NOZ_DATA'])
 
     #-- Setting randomly failures to imatch = 7
     if not seed is None:
         np.random.seed(seed)
-    w_mock_fail = (np.random.rand(nmock) > ssr) & (mock_full['IMATCH']!=2)
+    #w_mock_fail = (np.random.rand(nmock) > ssr) & ((mock_full['IMATCH']!=2) & (mock_full['IMATCH']!=-1))
+    w_mock_fail = (np.random.rand(nmock) > ssr) & ((mock_full['IMATCH']!=2) & (mock_full['IMATCH'] != 6) & (mock_full['IMATCH'] != -1))
     mock_full['IMATCH'][w_mock_fail] = 7
 
     #-- Compare redshift failure rates
@@ -262,7 +273,7 @@ def downsample_completeness(mock, seed=None):
 
     if not seed is None:
         np.random.seed(seed)
-    w_sub = np.random.rand(len(mock)) < mock['COMP_BOSS_IN']
+    w_sub = (np.random.rand(len(mock)) < mock['COMP_BOSS_IN'])
     return w_sub 
     
          
@@ -477,6 +488,7 @@ def assign_imatch2(data, mock, zmin=0.75, zmax=2.25, seed=None):
     print(f' Number of mocks with im2_frac information: {np.sum(win)}/{len(mock)}')
 
     mock['IM2_FRAC'] = np.interp(mock['SECTOR'], im2_frac['SECTOR'], im2_frac['IM2_FRAC'])
+    data['IM2_FRAC'] = np.interp(data['SECTOR'], im2_frac['SECTOR'], im2_frac['IM2_FRAC'])
      
     if not seed is None:
         np.random.seed(seed)
@@ -490,14 +502,19 @@ def assign_imatch2(data, mock, zmin=0.75, zmax=2.25, seed=None):
 
     
 
-def get_contaminants(data, fields):
+def get_contaminants(data, fields, zmin, zmax):
 
     #-- Getting contaminants from data
     imatch = data['IMATCH']
     wbad  = (imatch == 4) #-- stars
+    wbad |= (imatch == 7) #-- z-failures
     wbad |= (imatch == 9) #-- wrong class
     wbad |= (imatch == 14) #-- little coverage, unplugged, bad_target, no data
-    wbad |= (imatch == 15) 
+    wbad |= (imatch == 15) #-- not tiled
+    
+    wbad |= (imatch == 1) & ((data['Z'] < zmin) | (data['Z'] > zmax)) 
+    #wbad |= (imatch == 2) & ((data['Z'] < zmin) | (data['Z'] > zmax)) 
+ 
     bad_targets = data[wbad]
     bad_targets.keep_columns(fields)
     return bad_targets
@@ -583,7 +600,7 @@ def make_clustering_catalog_random(rand, mock, seed=None):
     return rand_clust[w]
 
 
-def get_imatch_stats(mock, zmin=0.55, zmax=1.05):
+def get_imatch_stats(mock, zmin, zmax):
 
     imatch = np.unique(mock['IMATCH'])
     for im in imatch:
@@ -592,10 +609,13 @@ def get_imatch_stats(mock, zmin=0.55, zmax=1.05):
         if im == 1 or im == 2:
             ww = (mock['Z'][w] >= zmin)&(mock['Z'][w] <= zmax)
             ngals = np.sum(ww)
-            print(im, f'{ngals} at {zmin} < z < {zmax}')
+            print(im, f'{ngals} at {zmin} <= z <= {zmax}')
             if 'WEIGHT_CP' in mock.colnames:
+                wgals = np.sum(mock['WEIGHT_CP'][w][ww])
+                print(im, f'{wgals:.1f} sum of (wcp)      at {zmin} <= z <= {zmax}')
+            if 'WEIGHT_NOZ' in mock.colnames and 'WEIGHT_CP' in mock.colnames:
                 wgals = np.sum(mock['WEIGHT_CP'][w][ww]*mock['WEIGHT_NOZ'][w][ww])
-                print(im, f'{wgals:.1f} sum of (wcp*wnoz) at {zmin} < z < {zmax}')
+                print(im, f'{wgals:.1f} sum of (wcp*wnoz) at {zmin} <= z <= {zmax}')
 
 def plot_completeness(mock, data, field='COMP_BOSS', vmin=0.5, vmax=1):
 
@@ -630,7 +650,7 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
                                 'WEIGHT_NOZ']
     fields_bad_targets = ['RA', 'DEC', 'Z', 'IMATCH', 'NTILES', 'SECTOR']  \
                          + fields_redshift_failures
-    bad_targets = get_contaminants(data, fields_bad_targets)
+    bad_targets = get_contaminants(data, fields_bad_targets, zmin, zmax)
 
     #-- Fit for photo-systematics on data and obtain a density model for sub-sampling mocks
     syst_obj, density_model_data = get_systematic_weights(data, rand_data, plotit=False,
@@ -702,18 +722,21 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
         for field in fields_bad_targets:
             if field not in mock.colnames:
                 mock[field] = np.zeros(len(mock), dtype=data[field].dtype) 
-
-        #-- Sub-sample following completeness
-        w_comp = downsample_completeness(mock, seed=imock)
-        comp_ratio = np.sum(w_comp)/len(mock)
-        mock['IMATCH'][~w_comp] = -1
-        print(f' Fraction kept after fiber comp downsampling: {comp_ratio:.4f}')
-
+        
+        #-- Assign legacy targets for QSO only
         if target=='QSO':
             assign_imatch2(data, mock, zmin=zmin, zmax=zmax, seed=imock)
 
         #-- Add data contaminants to mock
         mock_full = vstack([mock, bad_targets])
+
+        assign_sectors(mock_full, mask_dict)
+
+        #-- Sub-sample following completeness
+        w_comp = downsample_completeness(mock_full, seed=imock)
+        comp_ratio = np.sum(w_comp)/len(mock_full)
+        mock_full['IMATCH'][~w_comp] = -1
+        print(f' Fraction kept after fiber comp downsampling: {comp_ratio:.4f}')
 
         #-- Add fiber collisions
         print('')
@@ -776,7 +799,7 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
         print('Exporting mask to ', mask_name_out)
         mask.write(mask_name_out, overwrite=True)
        
-        if imock == 1:
+        if imock < 11:
             mock_full.write(mock_name_out.replace('.dat.fits', '_full.dat.fits'), overwrite=True)
             rand_new.write(rand_name_out.replace('.ran.fits', '_full.ran.fits'), overwrite=True)
 
