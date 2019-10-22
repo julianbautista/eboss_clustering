@@ -146,31 +146,37 @@ def add_redshift_failures(mock_full, data, fields_redshift_failures, seed=None):
              (imatch==15) 
     data_spec = data[w_spec] 
 
+    print(f'  Number of data spectra to match mock: {len(data_spec)}')
     #-- Remove failures already in mock, which come from real data (contaminants)
     w = mock_full['IMATCH'] == 7 
     mock_full['IMATCH'][w] = 6 
 
+    #-- All targets not legacy
+    w_nonlegacy = mock_full['IMATCH'] != 2
+    mock = mock_full[w_nonlegacy]
+
     #-- Match mock and data 
-    id1, id2, dist = spherematch(mock_full['RA'], mock_full['DEC'], 
-                                 data_spec['RA'], data_spec['DEC'], angle=0.2)
+    id1, id2, dist = spherematch(mock['RA'], mock['DEC'], 
+                                 data_spec['RA'], data_spec['DEC'], angle=1.)
     nmatch = id1.size
-    nmock = len(mock_full)
+    nmock = len(mock)
     print(f'  Number of mock galaxies matched to data: {nmatch}/{nmock} = {nmatch/nmock:.3f}')
+    print(f'  Max distance for matching: {dist.max()}')
 
     #-- Assign to mocks the data quantities 
     for field in fields_redshift_failures:
-        mock_full[field][id1] = data_spec[field][id2]
-    mock_full.rename_column('WEIGHT_NOZ', 'WEIGHT_NOZ_DATA')
+        mock[field][id1] = data_spec[field][id2]
+    mock.rename_column('WEIGHT_NOZ', 'WEIGHT_NOZ_DATA')
 
     #-- Define ssr: spectroscopic success rate using data weights
-    ssr = 1/(mock_full['WEIGHT_NOZ_DATA'])
+    ssr = 1/(mock['WEIGHT_NOZ_DATA'])
 
     #-- Setting randomly failures to imatch = 7
     if not seed is None:
         np.random.seed(seed)
-    #w_mock_fail = (np.random.rand(nmock) > ssr) & ((mock_full['IMATCH']!=2) & (mock_full['IMATCH']!=-1))
-    w_mock_fail = (np.random.rand(nmock) > ssr) & ((mock_full['IMATCH']!=2) & (mock_full['IMATCH'] != 6) & (mock_full['IMATCH'] != -1))
-    mock_full['IMATCH'][w_mock_fail] = 7
+
+    w_mock_fail = (np.random.rand(nmock) > ssr) & ((mock['IMATCH'] != 6) & (mock['IMATCH'] != -1))
+    mock['IMATCH'][w_mock_fail] = 7
 
     #-- Compare redshift failure rates
     w_data_fail = (imatch==7)
@@ -178,6 +184,9 @@ def add_redshift_failures(mock_full, data, fields_redshift_failures, seed=None):
              (imatch==4) | \
              (imatch==7) | \
              (imatch==9)
+
+    mock_full[w_nonlegacy] = mock
+
     w_mock = (mock_full['IMATCH'] == 1)|\
              (mock_full['IMATCH'] == 4)|\
              (mock_full['IMATCH'] == 7)|\
@@ -186,7 +195,7 @@ def add_redshift_failures(mock_full, data, fields_redshift_failures, seed=None):
     print(f'  Mock redshift failure rate: {np.sum(w_mock_fail)/np.sum(w_mock):.3f}')
 
     #-- Setting targets without plate info to imatch = 0 
-    w = mock_full['PLATE'] == 0 
+    w = (mock_full['PLATE'] == 0) & (mock_full['IMATCH'] != 2)
     mock_full['IMATCH'][w] = 0
 
 
@@ -268,7 +277,32 @@ def get_systematic_weights(mock, rand,
     norm = np.percentile(dens_model[~w], 99.9)
     dens_model[~w] /= norm
     return s, dens_model 
-     
+    
+def count_per_sector(mock, zmin, zmax):
+
+    im_values = [-1, 0, 1, 2, 3, 4, 7, 9, 13, 14, 15]
+    
+    counts = Table()
+    counts['SECTOR'] = mock['SECTOR']
+    for im in im_values:
+        w = mock['IMATCH'] == im
+        n = countdup(mock['SECTOR'], weights=w)
+        counts[f'N_IMATCH{im}'] = n
+        if im==1 or im==2:
+            w = w & (mock['Z']>=zmin) & (mock['Z'] <= zmax)
+            n = countdup(mock['SECTOR'], weights=w)
+            counts[f'N_IMATCH{im}_Z'] = n
+    try:
+        counts['COMP_BOSS_IN'] = mock['COMP_BOSS_IN']
+    except:
+        counts['COMP_BOSS_IN'] = mock['COMP_BOSS']
+
+    counts = unique(counts)
+    #counts['FRAC_COMP'] = ((counts['N1415']+counts['N479']+counts['NGAL'])*counts['COMP_BOSS_IN']\
+    #                        - counts['N479'])/counts['NGAL']
+
+    return counts
+ 
 def downsample_completeness(mock, seed=None):
 
     if not seed is None:
@@ -617,13 +651,13 @@ def get_imatch_stats(mock, zmin, zmax):
                 wgals = np.sum(mock['WEIGHT_CP'][w][ww]*mock['WEIGHT_NOZ'][w][ww])
                 print(im, f'{wgals:.1f} sum of (wcp*wnoz) at {zmin} <= z <= {zmax}')
 
-def plot_completeness(mock, data, field='COMP_BOSS', vmin=0.5, vmax=1):
+def plot_completeness(mock, data, field='COMP_BOSS', vmin=0.5, vmax=1, sub=10):
 
     f, ax = plt.subplots(1, 2, figsize=(10, 5))
-    pcm = ax[0].scatter(ra(data['RA']), data['DEC'], c=data[field], 
+    pcm = ax[0].scatter(ra(data['RA'])[::sub], data['DEC'][::sub], c=data[field][::sub], 
                   s=1, vmin=vmin, vmax=vmax, alpha=0.5)  
     f.colorbar(pcm, ax=ax[0])
-    pcm = ax[1].scatter(ra(mock['RA']), mock['DEC'], c=mock[field], 
+    pcm = ax[1].scatter(ra(mock['RA'])[::sub], mock['DEC'][::sub], c=mock[field][::sub], 
                   s=1, vmin=vmin, vmax=vmax, alpha=0.5)  
     f.colorbar(pcm, ax=ax[1])
     ax[0].set_ylabel('DEC [deg]')
@@ -667,13 +701,13 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
     rand0 = Table.read(rand_name)
 
     for imock in range(ifirst, ilast):
-        mock_name_in  = input_dir + f'/eBOSS_{target}/EZmock_eBOSS_{target}_{cap}_v7_{imock:04d}.dat'
         mock_name_out = output_dir+ f'/eBOSS_{target}/EZmock_eBOSS_{target}_{cap}_v7_{imock:04d}.dat.fits'
         mask_name_out = output_dir+ f'/eBOSS_{target}/EZmock_eBOSS_{target}_{cap}_v7_{imock:04d}.mask.fits'
         nbar_name_out = output_dir+ f'/eBOSS_{target}/EZmock_eBOSS_{target}_{cap}_v7_{imock:04d}.nbar.txt'
         rand_name_out = output_dir+ f'/eBOSS_{target}/EZmock_eBOSS_{target}_{cap}_v7_{imock:04d}.ran.fits'
 
         #-- Read mock
+        mock_name_in  = input_dir + f'/eBOSS_{target}/EZmock_eBOSS_{target}_{cap}_v7_{imock:04d}.dat'
         print('')
         print('Reading mock from', mock_name_in)
         try:
@@ -733,6 +767,11 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
         assign_sectors(mock_full, mask_dict)
 
         #-- Sub-sample following completeness
+        #counts = count_per_sector(mock_full, zmin, zmax)
+        #frac_comp = np.interp(mock_full['SECTOR'], counts['SECTOR'], counts['FRAC_COMP']) 
+        #np.random.seed(imock)
+        #w_comp = (np.random.rand(len(mock_full)) > frac_comp) & (mock_full['IMATCH'] == 0) 
+        #comp_ratio = np.sum(~w_comp)/len(mock_full)
         w_comp = downsample_completeness(mock_full, seed=imock)
         comp_ratio = np.sum(w_comp)/len(mock_full)
         mock_full['IMATCH'][~w_comp] = -1
@@ -762,18 +801,19 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
 
         mock_full['COMP_BOSS'] = fiber_completeness(mock_full) 
         mock_full['sector_SSR'] = sector_ssr(mock_full) 
-
-        mask = unique(mock_full['SECTOR', 'COMP_BOSS', 'sector_SSR'])     
  
-        #-- Make random catalog for this mock 
-        assign_sectors(rand, mask_dict)
-        rand_new = make_randoms(mock_full, rand, seed=imock)
-
         #-- Compute nbar
         nbar_mock = compute_nbar(mock_full, nbar_data['z_edges'], nbar_data['shell_vol'], P0=P0)
         #plt.plot(nbar_data['z_cen'], nbar_data['nbar'], 'C0')
         #plt.plot(nbar_mock['z_cen'], nbar_mock['nbar'], 'C1', alpha=0.3)
         #continue
+        
+        mask = unique(mock_full['SECTOR', 'COMP_BOSS', 'sector_SSR'])     
+
+        #-- Make random catalog for this mock 
+        assign_sectors(rand, mask_dict)
+        rand_new = make_randoms(mock_full, rand, seed=imock)
+
  
         #-- Compute FKP weights
         compute_weight_fkp(mock_full, nbar_mock, P0=P0)
