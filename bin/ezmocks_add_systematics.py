@@ -595,9 +595,11 @@ def make_randoms(mock, rand, seed=None):
 
     return rand_new
 
-def make_clustering_catalog(mock):
+def make_clustering_catalog(mock, zmin, zmax):
 
     w = ((mock['IMATCH']==1)|(mock['IMATCH']==2))
+    w &= (mock['Z'] >= zmin)
+    w &= (mock['Z'] <= zmax)
     w &= (mock['COMP_BOSS'] > 0.5)
     w &= (mock['sector_SSR'] > 0.5)
     mock_clust = mock[w]
