@@ -561,8 +561,8 @@ class Cosmo:
     @staticmethod
     def get_alphas(cosmo, cosmo_fid):
 
-        at = (cosmo.D_A*(1+self.z)/cosmo.r_drag)/(cosmo_fid.D_A*(1+self.z)/cosmo_fid.r_drag)
-        ap = (cosmo_fid.r_drag*cosmo_fid.H_z)/(cosmo.r_drag*cosmo.H_z)
+        at = (cosmo.D_M/cosmo.r_drag)/(cosmo_fid.D_M/cosmo_fid.r_drag)
+        ap = (cosmo.D_H/cosmo.r_drag)/(cosmo_fid.D_H/cosmo_fig.r_drag)
         #-- Padmanabhan & White 2009
         alpha = at**(2./3.)*ap**(1./3)
         epsilon = (ap/at)**(1./3) - 1
