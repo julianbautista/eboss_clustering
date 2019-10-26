@@ -829,7 +829,7 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
                             random_fraction=1, seed=imock, nbins=20, plotit=False)
 
         #-- Make clustering catalog
-        mock_clust = make_clustering_catalog(mock_full)
+        mock_clust = make_clustering_catalog(mock_full, zmin, zmax)
         rand_clust = make_clustering_catalog_random(rand_new, mock_clust, seed=imock)
 
         #-- Export  

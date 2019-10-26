@@ -12,6 +12,9 @@ from astropy.table import Table, unique, vstack
 cap = sys.argv[1]
 ifirst = int(sys.argv[2])
 ilast = int(sys.argv[3])
+zmin = float(sys.argv[4])
+zmax = float(sys.argv[5])
+P0 = float(10000.)
 
 for imock in range(ifirst, ilast):
     cmass_data = f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_LRG_v5.0/CMASS_{cap}/EZmock_CMASS_LRG_{cap}_DR12v5_{imock:04d}.fits'
@@ -28,12 +31,9 @@ for imock in range(ifirst, ilast):
     mply  = '/mnt/lustre/eboss/DR16_geometry/eboss_geometry_eboss0_eboss27.ply'
     mfits = '/mnt/lustre/eboss/DR16_geometry/eboss_geometry_eboss0_eboss27.fits'
 
-    zmin = 0.5 
-    zmax = 1.1 
     zbin = 0.01
     compmin = 0.5
     ssrmin = 0.5
-    P0 = 10000.0
 
 
     print('> Reading input files')
@@ -48,6 +48,17 @@ for imock in range(ifirst, ilast):
 
     eb_data = Table.read(eboss_data)
     eb_rand = Table.read(eboss_rand)
+
+    print('> Cut in redshift')
+    w = (eb_data['Z'] >= zmin) & (eb_data['Z'] <= zmax)
+    eb_data = eb_data[w]
+    w = (eb_rand['Z'] >= zmin) & (eb_rand['Z'] <= zmax)
+    eb_rand = eb_rand[w]
+    w = (cm_data['Z'] >= zmin) & (cm_data['Z'] <= zmax)
+    cm_data = cm_data[w]
+    w = (cm_rand['Z'] >= zmin) & (cm_rand['Z'] <= zmax)
+    cm_rand = cm_rand[w]
+    
 
     print('> Correcting ndata/nrand ratios')
     def get_ratios(eb_data, eb_rand, cm_data, cm_rand):

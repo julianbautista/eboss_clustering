@@ -118,7 +118,12 @@ class Cosmo:
         self.sigma8 = sigma8[0]
         self.H_z = results.hubble_parameter(z[0])
         self.D_A = results.angular_diameter_distance(z[0])
+        self.D_M = self.D_A*(1+z[0]) 
+        self.D_H = 299792.458/self.H_z
         self.r_drag = results.get_derived_params()['rdrag']
+        
+        print(f'D_M(z)/r_d = {self.D_M/self.r_drag:.3f}')
+        print(f'D_H(z)/r_d = {self.D_H/self.r_drag:.3f}')
 
         return kh, pk[0]
         
@@ -556,7 +561,7 @@ class Cosmo:
     @staticmethod
     def get_alphas(cosmo, cosmo_fid):
 
-        at = (cosmo.D_A/cosmo.r_drag)/(cosmo_fid.D_A/cosmo_fid.r_drag)
+        at = (cosmo.D_A*(1+self.z)/cosmo.r_drag)/(cosmo_fid.D_A*(1+self.z)/cosmo_fid.r_drag)
         ap = (cosmo_fid.r_drag*cosmo_fid.H_z)/(cosmo.r_drag*cosmo.H_z)
         #-- Padmanabhan & White 2009
         alpha = at**(2./3.)*ap**(1./3)
