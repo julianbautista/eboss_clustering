@@ -615,7 +615,7 @@ class Multipoles:
             cc.mono = self.monos[i]
             cc.quad = self.quads[i]
             cc.hexa = self.hexas[i]
-            cc.plot(fig=fig, errors=0, scale_r=scale_r, tight=False, **kwargs)
+            cc.plot(fig=fig, scale_r=scale_r, tight=False, **kwargs)
 
         return fig
 
