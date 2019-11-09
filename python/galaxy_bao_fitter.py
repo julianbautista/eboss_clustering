@@ -46,6 +46,15 @@ class Cosmo:
                                     omch2=0.13729646, 
                                     YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
                 pars.InitPower.set_params(As=2.0406217009089533e-09, ns=0.97)
+            elif name == 'challenge_omegab1':
+                pars.set_cosmology(H0=67.6, ombh2=0.0240,
+                                   omch2=0.11701745,
+                                   YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
+            elif name == 'challenge_omegab2':
+                pars.set_cosmology(H0=67.6, ombh2=0.0200,
+                                   omch2=0.12101645,
+                                   YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
+                pars.InitPower.set_params(As=2.0406217009089533e-09, ns=0.97)
             elif name == 'qpm':
                 pars.set_cosmology(H0=70., ombh2=0.022470,  
                                     omch2=0.11963, 
@@ -57,6 +66,11 @@ class Cosmo:
                                    omch2=0.1197, 
                                    YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
                 pars.InitPower.set_params(As=2.198e-09, ns=0.9655)
+            elif name == 'planck_open':
+                pars.set_cosmology(H0=63.6, ombh2=0.02249, omk=-0.044, 
+                                   omch2=0.1185, 
+                                   YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
+                pars.InitPower.set_params(As=2.0697e-09, ns=0.9688)
             elif name == 'outerrim':
                 pars.set_cosmology(H0=71., ombh2=0.022584, 
                                    omch2=0.10848, 
@@ -991,8 +1005,8 @@ class Chi2:
                 ax.errorbar(r, y_data, dy_data, fmt='o', ms=4)
             color = next(ax._get_lines.prop_cycler)['color']
             ax.plot(r_model, y_model, color=color, label=label)
-            if bb:
-                ax.plot(r_model, b_model, '--', color=color)
+            #if bb:
+            #    ax.plot(r_model, b_model, '--', color=color)
 
             if scale_r!=0:
                 ax.set_ylabel(r'$r^{%d} \xi_{%d}$ [$h^{%d}$ Mpc$^{%d}]$'%\

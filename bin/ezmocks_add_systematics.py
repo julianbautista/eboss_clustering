@@ -357,6 +357,9 @@ def sector_ssr(mock):
 
     return sect_ssr 
 
+def compute_area(rand, mask_dict):
+    
+    return 0 
     
 def read_nbar(fin):
 
@@ -372,6 +375,7 @@ def read_nbar(fin):
     nbar_dict = {'z_cen': zcen, 'z_edges': z_edges, 'nbar': nbar, 'shell_vol': shell_vol, 
                  'weighted_gals': wgals, 'area_eff': area_eff, 'vol_eff': vol_eff} 
     return nbar_dict
+
 
 def compute_nbar(mock, z_edges, shell_vol, P0=10000.):
 
@@ -470,16 +474,28 @@ def read_data(target=None, cap=None, data_name=None, rand_name=None,
     #-- Read mask files
     print('Reading completeness info from ', survey_comp)
     survey_comp = Table.read(survey_comp) 
-    sec_comp = unique(survey_comp['SECTOR', 'COMP_BOSS'])
-    geo_sector = sec_comp['SECTOR']
-    geo_comp   = sec_comp['COMP_BOSS']
+    sec_comp = unique(survey_comp['SECTOR', 'COMP_BOSS', 'SECTORAREA'])
 
     print('Reading survey geometry from ', survey_geometry)
     mask_fits = Table.read(survey_geometry+'.fits')
     mask_ply = pymangle.Mangle((survey_geometry+'.ply'))
 
-    mask_dict = {'geo_sector': geo_sector, 
-                 'geo_comp': geo_comp,
+    mask_fits['AREA'] = mask_ply.areas*1.
+    usect = np.unique(mask_fits['SECTOR'])
+    for sec in usect:
+        w = mask_fits['SECTOR'] == sec
+        area = np.sum(mask_fits['AREA'][w])
+        mask_fits['SECTORAREA'][w] = area*1.
+
+    for i in range(len(sec_comp)):
+        sec = sec_comp['SECTOR'][i]
+        w = mask_fits['SECTOR'] == sec
+        sec_comp['SECTORAREA'][i] = mask_fits['SECTORAREA'][w][0]
+
+
+    mask_dict = {'sector': sec_comp['SECTOR'], 
+                 'comp_boss': sec_comp['COMP_BOSS'],
+                 'sector_area': sec_comp['SECTORAREA'],
                  'mask_ply': mask_ply,
                  'mask_fits': mask_fits}
 
@@ -559,12 +575,12 @@ def assign_sectors(mock, mask_dict):
     mock_polyid = mask_dict['mask_ply'].polyid(mock['RA'], mock['DEC'])
     sector = mask_dict['mask_fits']['SECTOR'][mock_polyid]
     ntiles = mask_dict['mask_fits']['NTILES'][mock_polyid]
-    comp_boss = np.interp(sector, mask_dict['geo_sector'], mask_dict['geo_comp'])
+    comp_boss = np.interp(sector, mask_dict['sector'], mask_dict['comp_boss'])
     mock['SECTOR'] = sector*(mock_polyid>=0) 
     mock['NTILES'] = ntiles*(mock_polyid>=0)
     mock['COMP_BOSS_IN'] = comp_boss*(mock_polyid>=0) 
  
-def make_randoms(mock, rand, seed=None):
+def make_randoms(mock, rand, seed=None, add_radialintegralconstraint=False):
 
     w = (mock['IMATCH'] == 1) | (mock['IMATCH'] == 2)
     z = mock['Z'][w]
@@ -589,9 +605,12 @@ def make_randoms(mock, rand, seed=None):
     rand_new['sector_SSR'] = rand_ssr[inverse]
 
     #-- Picking redshifts from data
-    if not seed is None:
-        np.random.seed(seed)
-    rand_new['Z'] = np.random.choice(z, size=len(rand), replace=True)
+    if add_radialintegralconstraint:
+        if not seed is None:
+            np.random.seed(seed)
+        rand_new['Z'] = np.random.choice(z, size=len(rand), replace=True)
+    else:
+        rand_new['Z'] = rand['Z']
 
     return rand_new
 
@@ -615,6 +634,9 @@ def make_clustering_catalog_random(rand, mock, seed=None):
     rand_clust = Table()
     rand_clust['RA'] = rand['RA']*1
     rand_clust['DEC'] = rand['DEC']*1
+    rand_clust['Z'] = rand['Z']*1
+    rand_clust['NZ'] = rand['NZ']*1
+    rand_clust['WEIGHT_FKP'] = rand['WEIGHT_FKP']*1
     rand_clust['COMP_BOSS'] = rand['COMP_BOSS']*1
     rand_clust['sector_SSR'] = rand['sector_SSR']*1
 
@@ -624,7 +646,7 @@ def make_clustering_catalog_random(rand, mock, seed=None):
     index = np.arange(len(mock))
     ind = np.random.choice(index, size=len(rand), replace=True)
     
-    fields = ['WEIGHT_FKP', 'WEIGHT_NOZ', 'WEIGHT_CP', 'WEIGHT_SYSTOT', 'NZ', 'Z']
+    fields = ['WEIGHT_NOZ', 'WEIGHT_CP', 'WEIGHT_SYSTOT'] 
     for f in fields:
         rand_clust[f] = mock[f][ind]
 
@@ -677,6 +699,19 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
     print(f'zmax:   {zmax}')
     print(f'P0:     {P0}')
 
+    #-- Optional systematics
+    add_contaminants = False
+    add_photosyst = False
+    add_fibercompleteness = False
+    add_fibercollisions = False
+    add_zfailures = False
+    add_radialintegralconstraint = False
+    
+    #-- Setup directories
+    input_dir  = f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_{target}_v7.0'
+    output_dir = f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_{target}_v7.0_nosyst'
+    rand_name  = input_dir + f'/random/random_20x_eBOSS_{target}_{cap}_v7.fits'
+
     data, rand_data, mask_dict, nbar_data = read_data(target=target, cap=cap)
 
     #-- Get stars, bad targets, unpluggged fibers and the following columns
@@ -689,13 +724,10 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
     bad_targets = get_contaminants(data, fields_bad_targets, zmin, zmax)
 
     #-- Fit for photo-systematics on data and obtain a density model for sub-sampling mocks
-    syst_obj, density_model_data = get_systematic_weights(data, rand_data, plotit=False,
-                                                          target=target, zmin=zmin, zmax=zmax)
+    if add_photosyst:
+        syst_obj, density_model_data = get_systematic_weights(data, rand_data, plotit=False,
+                                                              target=target, zmin=zmin, zmax=zmax)
 
-    #-- Setup directories
-    input_dir  = f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_{target}_v7.0'
-    output_dir = f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_{target}_v7.0_syst'
-    rand_name  = input_dir + f'/random/random_20x_eBOSS_{target}_{cap}_v7.fits'
 
     #-- Read randoms just once
     print('')
@@ -725,11 +757,18 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
 
         #-- Getting an estimate of how many galaxies are lost through photo systematics
         #-- but not yet perform sub-sampling
-        w_photo = downsample_photo(density_model_data, mock0, seed=imock)
-        photo_ratio = np.sum(w_photo)/len(mock0)
+        if add_photosyst:
+            w_photo = downsample_photo(density_model_data, mock0, seed=imock)
+            photo_ratio = np.sum(w_photo)/len(mock0)
+        else:
+            photo_ratio = 1
         print(f' Fraction kept after photo syst downsampling: {photo_ratio:.4f}')
-        w_comp = downsample_completeness(mock0, seed=imock)
-        comp_ratio = np.sum(w_comp)/len(mock0)
+
+        if add_fibercompleteness:
+            w_comp = downsample_completeness(mock0, seed=imock)
+            comp_ratio = np.sum(w_comp)/len(mock0)
+        else:
+            comp_ratio = 1.
         print(f' Fraction kept after fiber comp downsampling: {comp_ratio:.4f}')
 
         #-- Compute original density
@@ -749,10 +788,11 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
         rand = rand0[w_sub]
 
         #-- Sub-sample of mock with photometric systematic map
-        w_photo = downsample_photo(density_model_data, mock, seed=imock)
-        photo_ratio = np.sum(w_photo)/len(mock)
-        mock = mock[w_photo]
-        print(f' Fraction kept after photo syst downsampling: {photo_ratio:.4f}')
+        if add_photosyst:
+            w_photo = downsample_photo(density_model_data, mock, seed=imock)
+            photo_ratio = np.sum(w_photo)/len(mock)
+            mock = mock[w_photo]
+            print(f' Fraction kept after photo syst downsampling: {photo_ratio:.4f}')
         
         #-- Add missing fields to mock with zeros 
         for field in fields_bad_targets:
@@ -764,57 +804,67 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
             assign_imatch2(data, mock, zmin=zmin, zmax=zmax, seed=imock)
 
         #-- Add data contaminants to mock
-        mock_full = vstack([mock, bad_targets])
+        if add_contaminants:
+            mock_full = vstack([mock, bad_targets])
+        else:
+            mock_full = mock
 
         assign_sectors(mock_full, mask_dict)
 
         #-- Sub-sample following completeness
-        #counts = count_per_sector(mock_full, zmin, zmax)
-        #frac_comp = np.interp(mock_full['SECTOR'], counts['SECTOR'], counts['FRAC_COMP']) 
-        #np.random.seed(imock)
-        #w_comp = (np.random.rand(len(mock_full)) > frac_comp) & (mock_full['IMATCH'] == 0) 
-        #comp_ratio = np.sum(~w_comp)/len(mock_full)
-        w_comp = downsample_completeness(mock_full, seed=imock)
-        comp_ratio = np.sum(w_comp)/len(mock_full)
-        mock_full['IMATCH'][~w_comp] = -1
-        print(f' Fraction kept after fiber comp downsampling: {comp_ratio:.4f}')
+        if add_fibercompleteness:
+            #counts = count_per_sector(mock_full, zmin, zmax)
+            #frac_comp = np.interp(mock_full['SECTOR'], counts['SECTOR'], counts['FRAC_COMP']) 
+            #np.random.seed(imock)
+            #w_comp = (np.random.rand(len(mock_full)) > frac_comp) & (mock_full['IMATCH'] == 0) 
+            #comp_ratio = np.sum(~w_comp)/len(mock_full)
+            w_comp = downsample_completeness(mock_full, seed=imock)
+            comp_ratio = np.sum(w_comp)/len(mock_full)
+            mock_full['IMATCH'][~w_comp] = -1
+            print(f' Fraction kept after fiber comp downsampling: {comp_ratio:.4f}')
 
         #-- Add fiber collisions
-        print('')
-        print('Adding fiber collisions...')
-        add_fiber_collisions(mock_full)
+        if add_fibercollisions:
+            print('')
+            print('Adding fiber collisions...')
+            add_fiber_collisions(mock_full)
 
-        #-- Correcting for fiber collisions
-        print('')
-        print('Correcting fiber collisions...')
-        correct_fiber_collisions(mock_full)
-
+            #-- Correcting for fiber collisions
+            print('')
+            print('Correcting fiber collisions...')
+            correct_fiber_collisions(mock_full)
+        else:
+            w = (mock_full['IMATCH'] == 0)
+            mock_full['IMATCH'][w] = 1
+            mock_full['WEIGHT_CP'] = 1
+        
         #-- Add redshift failures
-        print('')
-        print('Adding redshift failures...')
-        add_redshift_failures(mock_full, data, fields_redshift_failures, seed=imock)
+        if add_zfailures:
+            print('')
+            print('Adding redshift failures...')
+            add_redshift_failures(mock_full, data, fields_redshift_failures, seed=imock)
      
-        #-- Correct redshift failures
-        print('')
-        print('Correcting for redshift failures...')
-        redshift_failures.get_weights_noz(mock_full)
-        mock_full['WEIGHT_NOZ'][mock_full['IMATCH']==2] = 1  
-        #redshift_failures.plot_failures(mock_full)
+            #-- Correct redshift failures
+            print('')
+            print('Correcting for redshift failures...')
+            redshift_failures.get_weights_noz(mock_full)
+            mock_full['WEIGHT_NOZ'][mock_full['IMATCH']==2] = 1  
+            #redshift_failures.plot_failures(mock_full)
+        else:
+            mock_full['WEIGHT_NOZ'] = 1
 
         mock_full['COMP_BOSS'] = fiber_completeness(mock_full) 
         mock_full['sector_SSR'] = sector_ssr(mock_full) 
  
         #-- Compute nbar
         nbar_mock = compute_nbar(mock_full, nbar_data['z_edges'], nbar_data['shell_vol'], P0=P0)
-        #plt.plot(nbar_data['z_cen'], nbar_data['nbar'], 'C0')
-        #plt.plot(nbar_mock['z_cen'], nbar_mock['nbar'], 'C1', alpha=0.3)
-        #continue
         
         mask = unique(mock_full['SECTOR', 'COMP_BOSS', 'sector_SSR'])     
 
         #-- Make random catalog for this mock 
         assign_sectors(rand, mask_dict)
-        rand_new = make_randoms(mock_full, rand, seed=imock)
+        rand_new = make_randoms(mock_full, rand, seed=imock, 
+                                add_radialintegralconstraint=add_radialintegralconstraint)
 
  
         #-- Compute FKP weights
@@ -822,11 +872,16 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
         compute_weight_fkp(rand_new, nbar_mock, P0=P0)
      
         #-- Correct photometric systematics
-        print('')
-        print('Getting photo-systematic weights...')
-        s, density_model_mock = get_systematic_weights(mock_full, rand_new,
-                            target=target, zmin=zmin, zmax=zmax,
-                            random_fraction=1, seed=imock, nbins=20, plotit=False)
+        if add_photosyst:
+            print('')
+            print('Getting photo-systematic weights...')
+            s, density_model_mock = get_systematic_weights(mock_full, rand_new,
+                                                           target=target, zmin=zmin, zmax=zmax,
+                                                           random_fraction=1, seed=imock, nbins=20, 
+                                                           plotit=False)
+        else: 
+            mock_full['WEIGHT_SYSTOT'] = 1.0
+            rand_new['WEIGHT_SYSTOT'] = 1.0
 
         #-- Make clustering catalog
         mock_clust = make_clustering_catalog(mock_full, zmin, zmax)
@@ -838,12 +893,12 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
         mock_clust.write(mock_name_out, overwrite=True) 
         print('Exporting random to', mock_name_out)
         rand_clust.write(rand_name_out, overwrite=True) 
-        print('Exporting mask to ', mask_name_out)
-        mask.write(mask_name_out, overwrite=True)
+        #print('Exporting mask to ', mask_name_out)
+        #mask.write(mask_name_out, overwrite=True)
        
-        if imock < 11:
-            mock_full.write(mock_name_out.replace('.dat.fits', '_full.dat.fits'), overwrite=True)
-            rand_new.write(rand_name_out.replace('.ran.fits', '_full.ran.fits'), overwrite=True)
+        #if imock < 11:
+        #    mock_full.write(mock_name_out.replace('.dat.fits', '_full.dat.fits'), overwrite=True)
+        #    rand_new.write(rand_name_out.replace('.ran.fits', '_full.ran.fits'), overwrite=True)
 
 #-- This should be done with .ini file ... 
 if len(sys.argv) == 8:
