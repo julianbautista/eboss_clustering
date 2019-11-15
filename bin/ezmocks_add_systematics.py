@@ -1,10 +1,10 @@
 import numpy as np
 import matplotlib 
-matplotlib.use('Agg')
 import matplotlib.pylab as plt
 import healpy as hp
 import pymangle
 import sys
+import os
 
 from nbodykit.algorithms.fibercollisions import FiberCollisions
 from astropy.table import Table, vstack, unique
@@ -302,9 +302,6 @@ def count_per_sector(mock, zmin, zmax):
         counts['COMP_BOSS_IN'] = mock['COMP_BOSS']
 
     counts = unique(counts)
-    #counts['FRAC_COMP'] = ((counts['N1415']+counts['N479']+counts['NGAL'])*counts['COMP_BOSS_IN']\
-    #                        - counts['N479'])/counts['NGAL']
-
     return counts
  
 def downsample_completeness(mock, seed=None):
@@ -430,7 +427,8 @@ def compute_nbar(mock, z_edges, area_eff, P0=10000. ):
 
     z_cen = 0.5*(z_edges[:-1]+z_edges[1:])
    
-    nbar_dict = {'z_cen': z_cen, 'z_edges': z_edges, 'nbar': nbar, 'w_fkp': w_fkp, 'shell_vol': shell_vol,
+    nbar_dict = {'z_cen': z_cen, 'z_edges': z_edges, 'nbar': nbar, 
+                 'w_fkp': w_fkp, 'shell_vol': shell_vol,
                  'weighted_gals': counts, 'vol_eff': vol_eff, 'area_eff': area_eff}
 
     return nbar_dict
@@ -722,21 +720,45 @@ def plot_completeness(mock, data, field='COMP_BOSS', vmin=0.5, vmax=1, sub=10):
     ax[1].set_xlabel('RA [deg]')
     plt.tight_layout()
 
-def main(target, cap, ifirst, ilast, zmin, zmax, P0):
+
+def print_stats(mock):
+
+    w_comp = mock['COMP_BOSS']>0.5
+    w_ssr  = mock['sector_SSR']>0.5
+    w_both = w_comp & w_ssr
+    print(f' - COMP_BOSS  > 0.5: {np.sum(w_comp)}/{len(mock)} = {np.sum(w_comp)/len(mock):.3f}') 
+    print(f' - sector_SSR > 0.5: {np.sum(w_ssr )}/{len(mock)} = {np.sum(w_ssr )/len(mock):.3f}')
+    print(f' - both :            {np.sum(w_both)}/{len(mock)} = {np.sum(w_both)/len(mock):.3f}')
+    return w_both 
+
+
+def main(target, cap, ifirst, ilast, zmin, zmax, P0, options):
 
     print(f'Target: {target}')
     print(f'cap:    {cap}')
     print(f'zmin:   {zmin}')
     print(f'zmax:   {zmax}')
     print(f'P0:     {P0}')
-
+    print(f'Options for systematics: {options}') 
+    
     #-- Optional systematics
     add_contaminants = False
-    add_photosyst = False
-    add_fibercompleteness = False
-    add_fibercollisions = False
-    add_zfailures = False
-    add_radial_integral_constraint = False
+    add_photosyst = 'syst' in options
+    add_fibercompleteness = 'comp' in options
+    add_fibercollisions = 'cp' in options
+    correct_fibercollisions = not 'cp0' in options
+    add_zfailures = 'noz' in options
+    add_radial_integral_constraint = 'ric' in options
+    
+    suffix = '_comp'*add_fibercompleteness
+    suffix += '_cp'*add_fibercollisions  + '0'*(correct_fibercollisions == False)
+    suffix += '_noz'*add_zfailures
+    suffix += '_syst'*add_photosyst
+    suffix += '_ric'*add_radial_integral_constraint
+    
+    output_dir = f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_v7.1'+suffix+f'/eBOSS_{target}'
+    os.makedirs(output_dir, exist_ok=True)
+    print(f'Mocks will be written at: {output_dir}')
     
     #-- Read data
     data, rand_data, mask_dict, nbar_data = read_data(target=target, cap=cap)
@@ -751,17 +773,16 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
     bad_targets = get_contaminants(data, fields_bad_targets, zmin, zmax)
     
     #-- Fit for photo-systematics on data and obtain a density model for sub-sampling mocks
+    density_model_data = None
     if add_photosyst:
-        syst_obj, density_model_data = get_systematic_weights(data, rand_data, plotit=False,
-                                                              target=target, zmin=zmin, zmax=zmax)
+        _, density_model_data = get_systematic_weights(data, rand_data, plotit=False,
+                                                      target=target, zmin=zmin, zmax=zmax)
     
 
-    #-- Setup mock directories
-    input_dir  = f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_{target}_v7.0'
-    output_dir = f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_{target}_v7.1_nosyst'
-    rand_name  = input_dir + f'/random/random_20x_eBOSS_{target}_{cap}_v7.fits'
 
     #-- Read randoms just once
+    input_dir  = f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_{target}_v7.0'
+    rand_name  = input_dir + f'/random/random_20x_eBOSS_{target}_{cap}_v7.fits'
     print('')
     print('Reading random from ', rand_name)
     rand0 = Table.read(rand_name)
@@ -773,10 +794,6 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
     area_data = area_eff_data * len(rand0) / np.sum(rand0['COMP_BOSS_IN']) 
 
     for imock in range(ifirst, ilast):
-        mock_name_out = output_dir+ f'/eBOSS_{target}/EZmock_eBOSS_{target}_{cap}_v7_{imock:04d}.dat.fits'
-        mask_name_out = output_dir+ f'/eBOSS_{target}/EZmock_eBOSS_{target}_{cap}_v7_{imock:04d}.mask.fits'
-        nbar_name_out = output_dir+ f'/eBOSS_{target}/EZmock_eBOSS_{target}_{cap}_v7_{imock:04d}.nbar.txt'
-        rand_name_out = output_dir+ f'/eBOSS_{target}/EZmock_eBOSS_{target}_{cap}_v7_{imock:04d}.ran.fits'
 
         #-- Read mock
         mock_name_in  = input_dir + f'/eBOSS_{target}/EZmock_eBOSS_{target}_{cap}_v7_{imock:04d}.dat'
@@ -800,7 +817,7 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
             photo_ratio = np.sum(w_photo)/len(mock0)
         else:
             photo_ratio = 1
-        #print(f' Fraction kept after photo syst downsampling: {photo_ratio:.4f}')
+        print(f' Fraction kept after photo syst downsampling: {photo_ratio:.4f}')
 
         #-- Removing this since now we correctly re-compute the effective area 
         #if add_fibercompleteness:
@@ -844,20 +861,12 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
             assign_imatch2(data, mock, zmin=zmin, zmax=zmax, seed=imock)
 
         #-- Add data contaminants to mock
-        if add_contaminants:
-            mock_full = vstack([mock, bad_targets])
-        else:
-            mock_full = mock
+        mock_full = vstack([mock, bad_targets]) if add_contaminants else mock
 
         assign_sectors(mock_full, mask_dict)
 
         #-- Sub-sample following completeness
         if add_fibercompleteness:
-            #counts = count_per_sector(mock_full, zmin, zmax)
-            #frac_comp = np.interp(mock_full['SECTOR'], counts['SECTOR'], counts['FRAC_COMP']) 
-            #np.random.seed(imock)
-            #w_comp = (np.random.rand(len(mock_full)) > frac_comp) & (mock_full['IMATCH'] == 0) 
-            #comp_ratio = np.sum(~w_comp)/len(mock_full)
             w_comp = downsample_completeness(mock_full, seed=imock)
             comp_ratio = np.sum(w_comp)/len(mock_full)
             mock_full['IMATCH'][~w_comp] = -1
@@ -870,13 +879,16 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
             add_fiber_collisions(mock_full)
 
             #-- Correcting for fiber collisions
-            print('')
-            print('Correcting fiber collisions...')
-            correct_fiber_collisions(mock_full)
+            if correct_fibercollisions:
+                print('')
+                print('Correcting fiber collisions...')
+                correct_fiber_collisions(mock_full)
+            else:
+                mock_full['WEIGHT_CP'] = 1.0
         else:
             w = (mock_full['IMATCH'] == 0)
             mock_full['IMATCH'][w] = 1
-            mock_full['WEIGHT_CP'] = 1
+            mock_full['WEIGHT_CP'] = 1.0
         
         #-- Add redshift failures
         if add_zfailures:
@@ -896,34 +908,15 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
         mock_full['COMP_BOSS'] = fiber_completeness(mock_full) 
         mock_full['sector_SSR'] = sector_ssr(mock_full) 
         
-        w_comp = mock_full['COMP_BOSS']>0.5
-        w_ssr  = mock_full['sector_SSR']>0.5
-        w_both_mock = w_comp & w_ssr
         print('Galaxies information:')
-        print(f' - COMP_BOSS  > 0.5: {np.sum(w_comp)}/{len(mock_full)} = {np.sum(w_comp)/len(mock_full):.3f}') 
-        print(f' - sector_SSR > 0.5: {np.sum(w_ssr )}/{len(mock_full)} = {np.sum(w_ssr )/len(mock_full):.3f}')
-        print(f' - both :            {np.sum(w_both_mock)}/{len(mock_full)} = {np.sum(w_both_mock)/len(mock_full):.3f}')
+        w_both_mock = print_stats(mock_full) 
         
-        mask = unique(mock_full['SECTOR', 'COMP_BOSS', 'sector_SSR'])     
-        w_comp = mask['COMP_BOSS']>0.5
-        w_ssr  = mask['sector_SSR']>0.5
-        w_both = w_comp & w_ssr
-
-        print('Sectors information:')
-        print(f' - COMP_BOSS  > 0.5: {np.sum(w_comp)}/{len(mask)}')
-        print(f' - sector_SSR > 0.5: {np.sum(w_ssr )}/{len(mask)}')
-        print(f' - both :            {np.sum(w_both)}/{len(mask)}')
-
         #-- Make random catalog for this mock 
         rand_full = make_randoms(mock_full, rand, seed=imock, 
                                  add_radial_integral_constraint=add_radial_integral_constraint)
-        w_comp = rand_full['COMP_BOSS']>0.5
-        w_ssr  = rand_full['sector_SSR']>0.5
-        w_both_rand = w_comp & w_ssr
+        
         print('Randoms information:')
-        print(f' - COMP_BOSS  > 0.5: {np.sum(w_comp)}/{len(rand_full)} = {np.sum(w_comp)/len(rand_full):.3f} ')
-        print(f' - sector_SSR > 0.5: {np.sum(w_ssr )}/{len(rand_full)} = {np.sum(w_ssr )/len(rand_full):.3f}')
-        print(f' - both :            {np.sum(w_both_rand)}/{len(rand_full)} = {np.sum(w_both_rand)/len(rand_full):.3f}')
+        w_both_rand = print_stats(rand_full)
         frac_area = np.sum(w_both_rand)/len(rand_full)
     
         mock_full = mock_full[w_both_mock]
@@ -939,9 +932,6 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
         #nbar_mock = compute_nbar(mock_full, nbar_data['z_edges'], nbar_data['shell_vol'], P0=P0)
         nbar_mock = compute_nbar(mock_full, nbar_data['z_edges'], area_eff_mock, P0=P0)
         
-
-
- 
         #-- Compute FKP weights
         compute_weight_fkp(mock_full, nbar_mock, P0=P0)
         compute_weight_fkp(rand_full, nbar_mock, P0=P0)
@@ -950,10 +940,10 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
         if add_photosyst:
             print('')
             print('Getting photo-systematic weights...')
-            s, density_model_mock = get_systematic_weights(mock_full, rand_full,
-                                                           target=target, zmin=zmin, zmax=zmax,
-                                                           random_fraction=1, seed=imock, nbins=20, 
-                                                           plotit=False)
+            _ = get_systematic_weights(mock_full, rand_full,
+                                       target=target, zmin=zmin, zmax=zmax,
+                                       random_fraction=1, seed=imock, nbins=20, 
+                                       plotit=False)
         else: 
             mock_full['WEIGHT_SYSTOT'] = 1.0
             rand_full['WEIGHT_SYSTOT'] = 1.0
@@ -971,6 +961,11 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
         rand_clust = make_clustering_catalog_random(rand_full, mock_clust, seed=imock)
 
         #-- Export  
+        mock_name_out = output_dir+ f'/EZmock_eBOSS_{target}_{cap}_v7_{imock:04d}.dat.fits'
+        mask_name_out = output_dir+ f'/EZmock_eBOSS_{target}_{cap}_v7_{imock:04d}.mask.fits'
+        nbar_name_out = output_dir+ f'/EZmock_eBOSS_{target}_{cap}_v7_{imock:04d}.nbar.txt'
+        rand_name_out = output_dir+ f'/EZmock_eBOSS_{target}_{cap}_v7_{imock:04d}.ran.fits'
+
         print('')
         print('Exporting mock to', mock_name_out)
         mock_clust.write(mock_name_out, overwrite=True) 
@@ -982,7 +977,7 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
         #print('Exporting mask to ', mask_name_out)
         #mask.write(mask_name_out, overwrite=True)
        
-        if imock < 11:
+        if imock < -1:
             plot_completeness(mock_full, data, field='COMP_BOSS', sub=1)
             plt.suptitle(f'COMP_BOSS {target} {cap} mock #{imock:04d}')
             plt.savefig(mock_name_out.replace('dat.fits', 'comp_boss.png'))
@@ -993,15 +988,13 @@ def main(target, cap, ifirst, ilast, zmin, zmax, P0):
             rand_full.write(rand_name_out.replace('.ran.fits', '_full.ran.fits'), overwrite=True)
 
 #-- This should be done with .ini file ... 
-if len(sys.argv) == 8:
+if len(sys.argv) == 9:
     matplotlib.use('Agg')
     plt.ioff()
-
     main(sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), 
-         float(sys.argv[5]), float(sys.argv[6]), float(sys.argv[7]))
+         float(sys.argv[5]), float(sys.argv[6]), float(sys.argv[7]), sys.argv[8])
 else:
-    print('python ezmocks_add_systematics.py target cap ifirst ilast zmin zmax P0')
-
+    print('python ezmocks_add_systematics.py target cap ifirst ilast zmin zmax P0 options')
 
 
 
