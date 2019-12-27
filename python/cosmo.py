@@ -5,13 +5,14 @@ class CosmoSimple:
 
     def __init__(self, omega_m=0.31, h=0.676):
         print(f'Initializing cosmology with omega_m = {omega_m:.2f}')
-        c = 299792.458 #m/s
+        c = 299792.458 #km/s
         omega_lambda = 1 - omega_m
         ztab = np.linspace(0., 5., 10000)
         E_z = np.sqrt(omega_lambda + omega_m*(1+ztab)**3)
         rtab = np.zeros(ztab.size)
+        dz = ztab[1]-ztab[0]
         for i in range(1, ztab.size):
-            rtab[i] = rtab[i-1] + c * (1/E_z[i-1]+1/E_z[i])/2. * (ztab[i]-ztab[i-1]) / 100.
+            rtab[i] = rtab[i-1] + c * (1/E_z[i-1]+1/E_z[i])/2. * dz / 100.
 
         self.h = h
         self.c = c
@@ -21,9 +22,22 @@ class CosmoSimple:
         self.rtab = rtab 
         self.E_z = E_z
 
+    def get_hubble(self, z):
+        '''Hubble rate in km/s/Mpc'''
+        return np.interp(z, self.ztab, self.E_z*self.h*100.)
+
     def get_comoving_distance(self, z):
         '''Comoving distance in Mpc/h '''
         return np.interp(z, self.ztab, self.rtab)
+
+    def get_DV(self, z):
+        ''' Get spherically averaged distance D_V(z) = (c*z*D_M**2/H)**(1/3) in Mpc'''
+        #-- This equation below is only valid in flat space
+        #-- Dividing by h to get DV in Mpc to match H which is in km/s/Mpc
+        D_M = self.get_comoving_distance(z)/self.h
+        H = self.get_hubble(z)
+        D_V = (self.c*z*D_M**2/H)**(1/3)
+        return D_V
 
     def get_redshift(self, r):
         '''Get redshift from comoving distance in Mpc/h units'''
