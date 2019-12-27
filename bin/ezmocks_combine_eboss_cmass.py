@@ -14,15 +14,17 @@ ifirst = int(sys.argv[2])
 ilast = int(sys.argv[3])
 zmin = float(sys.argv[4])
 zmax = float(sys.argv[5])
+options = sys.argv[6]
 P0 = float(10000.)
 
 for imock in range(ifirst, ilast):
     cmass_data = f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_LRG_v5.0/CMASS_{cap}/EZmock_CMASS_LRG_{cap}_DR12v5_{imock:04d}.fits'
     cmass_rand = f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_LRG_v5.0/RANDOM/random_20x_CMASS_LRG_{cap}_DR12v5.fits' 
-    eboss_data = f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_LRG_v7.0_syst/eBOSS_LRG/EZmock_eBOSS_LRG_{cap}_v7_{imock:04d}.dat.fits'
-    eboss_rand = f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_LRG_v7.0_syst/eBOSS_LRG/EZmock_eBOSS_LRG_{cap}_v7_{imock:04d}.ran.fits'
-    eboss_comp = f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_LRG_v7.0_syst/eBOSS_LRG/EZmock_eBOSS_LRG_{cap}_v7_{imock:04d}.mask.fits'
-    out_root =   f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_LRG_v7.0_syst/eBOSS_CMASS/EZmock_eBOSS_LRGpCMASS_{cap}_v7_{imock:04d}'
+    eboss_data = f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_v7.1_{options}/eBOSS_LRG/EZmock_eBOSS_LRG_{cap}_v7_{imock:04d}.dat.fits'
+    eboss_rand = f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_v7.1_{options}/eBOSS_LRG/EZmock_eBOSS_LRG_{cap}_v7_{imock:04d}.ran.fits'
+    eboss_comp = f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_v7.1_{options}/eBOSS_LRG/EZmock_eBOSS_LRG_{cap}_v7_{imock:04d}.mask.fits'
+    os.makedirs(f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_v7.1_{options}/eBOSS_CMASS', exist_ok=True)
+    out_root =   f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_v7.1_{options}/eBOSS_CMASS/EZmock_eBOSS_LRGpCMASS_{cap}_v7_{imock:04d}'
     #eboss_data = f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_LRG_v5.0/eBOSS_{cap}/EZmock_eBOSS_LRG_{cap}_v5_{imock:04d}.fits'
     #eboss_rand = f'/mnt/lustre/eboss/EZ_MOCKs/EZmock_LRG_v5.0/RANDOM/random_20x_eBOSS_LRG_{cap}_v5.fits'
     #eboss_comp = f'/mnt/lustre/eboss/DR16_LRG_data/v7/eBOSS_LRGgeometry_v7.fits'
@@ -51,12 +53,16 @@ for imock in range(ifirst, ilast):
 
     print('> Cut in redshift')
     w = (eb_data['Z'] >= zmin) & (eb_data['Z'] <= zmax)
+    print(f'  eboss data: {np.sum(w)} {w.size}')
     eb_data = eb_data[w]
     w = (eb_rand['Z'] >= zmin) & (eb_rand['Z'] <= zmax)
+    print(f'  eboss rand: {np.sum(w)} {w.size}')
     eb_rand = eb_rand[w]
     w = (cm_data['Z'] >= zmin) & (cm_data['Z'] <= zmax)
+    print(f'  cmass data: {np.sum(w)} {w.size}')
     cm_data = cm_data[w]
     w = (cm_rand['Z'] >= zmin) & (cm_rand['Z'] <= zmax)
+    print(f'  cmass rand: {np.sum(w)} {w.size}')
     cm_rand = cm_rand[w]
     
 

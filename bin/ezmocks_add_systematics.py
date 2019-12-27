@@ -488,9 +488,15 @@ def read_data(target=None, cap=None, data_name=None, rand_name=None,
     rand = Table.read(rand_name)
 
     #-- Cut on COMP_BOSS > 0.5 (there's no mocks outside)
-    wd = (data['COMP_BOSS']>0.5) & (data['sector_SSR']>0.5)
+    wd =  (data['COMP_BOSS'] >0.5) 
+    print(f' Cutting data COMP_BOSS > 0.5: {np.sum(wd)}/{wd.size}')
+    wd &= (data['sector_SSR']>0.5)
+    print(f' Cutting data sector_SSR > 0.5: {np.sum(wd)}/{wd.size}')
     data = data[wd]
-    wr = (rand['COMP_BOSS']>0.5) & (rand['sector_SSR']>0.5)
+    wr =  (rand['COMP_BOSS'] >0.5) 
+    print(f' Cutting rand COMP_BOSS > 0.5: {np.sum(wr)}/{wr.size}')
+    wr &= (rand['sector_SSR']>0.5)
+    print(f' Cutting rand sector_SSR > 0.5: {np.sum(wr)}/{wr.size}')
     rand = rand[wr]
 
     #-- Removing NaN (just to avoid annoying warning messages) 

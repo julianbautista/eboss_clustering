@@ -42,6 +42,7 @@ for k in config['options']:
 
 if not options['fit_quad']:
     m.quad = None
+
 if not options['fit_hexa']:
     m.hexa = None
 
