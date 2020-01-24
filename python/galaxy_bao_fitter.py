@@ -72,11 +72,12 @@ class Cosmo:
                                    YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
                 pars.InitPower.set_params(As=2.0697e-09, ns=0.9688)
             elif name == 'outerrim':
-                pars.set_cosmology(H0=71., ombh2=0.022584, 
-                                   omch2=0.10848, 
+                pars.set_cosmology(H0=71., ombh2=0.02258, 
+                                   #omch2=0.10848, 
+                                   omch2=0.1109, 
                                    YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.0,
                                     num_massive_neutrinos=0)
-                pars.InitPower.set_params(As=2.224615e-09, ns=0.963)
+                pars.InitPower.set_params(As=2.1604128e-09, ns=0.963)
             elif name == 'ezmock':
                 pars.set_cosmology(H0=67.77, ombh2=0.0221399210, 
                                    omch2=0.1189110239, 
