@@ -288,7 +288,7 @@ if 'plot' in config:
     plt.show()
 
 
-
+chi2.export_model(output+'.model')
 
 
 

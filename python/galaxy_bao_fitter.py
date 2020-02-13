@@ -1179,4 +1179,39 @@ class Chi2:
             print(f'{k[0]} {k[1]} {cov[k]} {corr}', file=fout)
         fout.close()  
 
+    def export_model(self, fout):
+
+        model = self.model
+        nmul = 1+1*model.fit_quad+1*model.fit_hexa
+        r = self.data.r
+        r_model = np.linspace(r.min(), r.max(), 200)
+        cf_model = self.get_model(r_model, self.best_pars)
+        if hasattr(self, 'bb_pars'):
+            bb_model = self.get_broadband(self.bb_pars, r=np.tile(r_model, nmul))
+            cf_model += bb_model
+            bb=True
+        else:
+            bb=False
+
+
+        cf_model = cf_model.reshape((nmul, 200)) 
+        if bb:
+            bb_model = bb_model.reshape((nmul, 200)) 
+        
+        fout = open(fout, 'w')
+        line = '#r mono '+'quad '*model.fit_quad+'hexa '*model.fit_hexa
+        if bb:
+            line += 'bb_mono '+'bb_quad '*model.fit_quad+'bb_hexa'*model.fit_hexa
+        print(line, file=fout)
+
+        for i in range(200):
+            line = f'{r_model[i]}  '
+            for l in range(nmul):
+                line += f'{cf_model[l, i]}  ' 
+            if bb:
+                for l in range(nmul):
+                    line += f'{bb_model[l, i]}  ' 
+            print(line, file=fout)
+        fout.close()
+
 
