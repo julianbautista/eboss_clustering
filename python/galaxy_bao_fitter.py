@@ -115,10 +115,6 @@ class Cosmo:
 
         
         sigma8 = results.get_sigma8()
-        print('sigma_8(z=%.3f) = %.4f'%(z[0],sigma8[0]) )
-        print( 'H(z)   = ', results.hubble_parameter(z[0]) )
-        print( 'D_A(z) = ', results.angular_diameter_distance(z[0]) )
-        print( 'rdrag  = ', results.get_derived_params()['rdrag'] )
 
         if norm_pk:
             pk /= sigma8[0]**2
@@ -135,12 +131,26 @@ class Cosmo:
         self.D_A = results.angular_diameter_distance(z[0])
         self.D_M = self.D_A*(1+z[0]) 
         self.D_H = 299792.458/self.H_z
+        self.D_V = (z[0]*(self.D_M)**2*self.D_H)**(1./3) 
         self.r_drag = results.get_derived_params()['rdrag']
+        self.get_dist_rdrag()
         
-        print(f'D_M(z)/r_d = {self.D_M/self.r_drag:.3f}')
-        print(f'D_H(z)/r_d = {self.D_H/self.r_drag:.3f}')
+        print(f'\sigma_8(z={z[0]:.3f}) = {sigma8[0]:.5f}')
+        print( 'r_drag = ', results.get_derived_params()['rdrag'] )
+        print( 'H(z)   = ', results.hubble_parameter(z[0]) )
+        print('D_H(z=%.3f)/r_d = %.5f'%(self.z, self.DH_rd))
+        print('D_M(z=%.3f)/r_d = %.5f'%(self.z, self.DM_rd))
+        print('D_V(z=%.3f)/r_d = %.5f'%(self.z, self.DV_rd))
 
         return kh, pk[0]
+    
+    def get_dist_rdrag(self):
+        
+        c = 299792.458
+        self.DH_rd = c/self.H_z/self.r_drag
+        self.DM_rd = self.D_M/self.r_drag
+        self.DV_rd = (c*self.z*(self.D_A*(1+self.z))**2/self.H_z)**(1./3)/self.r_drag
+
         
     def get_correlation_function(self, k=None, pk=None,  
                                  sigma_nl=0., r=None, 
@@ -563,15 +573,6 @@ class Cosmo:
         xi_conv = np.array([xi_mono, xi_quad, xi_hexa])
         return xi_conv
 
-
-    def get_dist_rdrag(self):
-        
-        self.DH_rd = 300000./self.H_z/self.r_drag
-        self.DM_rd = self.D_A*(1+self.z)/self.r_drag
-        self.DV_rd = (300000.*self.z*(self.D_A*(1+self.z))**2/self.H_z)**(1./3)/self.r_drag
-        print('D_H(z=%.2f)/r_d = %.2f'%(self.z, self.DH_rd))
-        print('D_M(z=%.2f)/r_d = %.2f'%(self.z, self.DM_rd))
-        print('D_V(z=%.2f)/r_d = %.2f'%(self.z, self.DV_rd))
 
     @staticmethod
     def get_alphas(cosmo, cosmo_fid):
