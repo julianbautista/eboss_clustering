@@ -134,16 +134,17 @@ class Cosmo:
         self.D_V = (z[0]*(self.D_M)**2*self.D_H)**(1./3) 
         self.r_drag = results.get_derived_params()['rdrag']
         self.get_dist_rdrag()
-        self.f = (pars.omegam*(1+z[0])**3/(self.H_z/pars.H0)**2)**0.55
- 
+        self.fsigma8 = results.get_fsigma8()[0]
+        self.f = self.fsigma8 / self.sigma8
+
         print( 'r_drag = ', results.get_derived_params()['rdrag'] )
         print( 'H(z)   = ', results.hubble_parameter(z[0]) )
         print('D_H(z=%.3f)/r_d = %.5f'%(self.z, self.DH_rd))
         print('D_M(z=%.3f)/r_d = %.5f'%(self.z, self.DM_rd))
         print('D_V(z=%.3f)/r_d = %.5f'%(self.z, self.DV_rd))
         print(f'\sigma_8(z={z[0]:.3f}) = {sigma8[0]:.5f}')
-        print(f'f(z) = {self.f:.5}')
-        print(f'fsig8(z) = {self.f*self.sigma8:.5f}')
+        print(f'f(z) = {self.f:.6}')
+        print(f'fsig8(z) = {self.fsigma8:.6f}')
 
         return kh, pk[0]
     
