@@ -71,6 +71,11 @@ class Cosmo:
                                    omch2=0.1185, 
                                    YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
                 pars.InitPower.set_params(As=2.0697e-09, ns=0.9688)
+            elif name == 'planck2018':
+                pars.set_cosmology(H0=67.66, ombh2=0.02242,
+                                   omch2=0.119352571517,
+                                   YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
+                pars.InitPower.set_params(As=2.105214963579407e-09, ns=0.9665)
             elif name == 'outerrim':
                 pars.set_cosmology(H0=71., ombh2=0.02258, 
                                    #omch2=0.10848, 
@@ -136,17 +141,21 @@ class Cosmo:
         self.get_dist_rdrag()
         self.fsigma8 = results.get_fsigma8()[0]
         self.f = self.fsigma8 / self.sigma8
-
-        print( 'r_drag = ', results.get_derived_params()['rdrag'] )
-        print( 'H(z)   = ', results.hubble_parameter(z[0]) )
-        print('D_H(z=%.3f)/r_d = %.5f'%(self.z, self.DH_rd))
-        print('D_M(z=%.3f)/r_d = %.5f'%(self.z, self.DM_rd))
-        print('D_V(z=%.3f)/r_d = %.5f'%(self.z, self.DV_rd))
-        print(f'\sigma_8(z={z[0]:.3f}) = {sigma8[0]:.5f}')
-        print(f'f(z) = {self.f:.6}')
-        print(f'fsig8(z) = {self.fsigma8:.6f}')
-
+        
         return kh, pk[0]
+
+    def print_distances(self):
+
+        print('z =', self.z)
+        print( 'r_drag = ', self.r_drag) 
+        print( 'H(z)   = ', self.H_z )
+        print('D_H(z)/r_d = ', self.DH_rd)
+        print('D_M(z)/r_d = ', self.DM_rd)
+        print('D_V(z)/r_d = ', self.DV_rd)
+        print(f'sigma_8(z) = ', self.sigma8)
+        print(f'f(z) = ', self.f)
+        print(f'fsig8(z) = ', self.fsigma8)
+
     
     def get_dist_rdrag(self):
         
