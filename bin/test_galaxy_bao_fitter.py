@@ -22,7 +22,10 @@ def test(cosmo,
          decoupled=False, no_peak=False, 
          figsize=(12, 5), saveroot=None):
 
-    labels = {'at': r'$\alpha_\perp$', 'ap': r'$\alpha_\parallel$',
+    labels = {'aiso': r'$\alpha_{\rm iso}$', 
+              'epsilon': r'$\epsilon$',
+              'at': r'$\alpha_\perp$', 
+              'ap': r'$\alpha_\parallel$',
               'beta': r'$\beta$', 'bias': r'$b$', 
               'sigma_rec': r'$\Sigma_{\rm rec}$', 
               'sigma_par': r'$\Sigma_{\parallel}$',
@@ -39,12 +42,10 @@ def test(cosmo,
         fig, ax = plt.subplots(nrows=1, ncols=nell, figsize=figsize)
         xs = pars_to_test['aiso']
         xs = np.linspace(xs[0], xs[1], xs[2])
-        colors = plt.cm.jet(np.linspace(0, 1, len(aisos)))
+        colors = plt.cm.jet(np.linspace(0, 1, len(xs)))
 
-        for i, ap in enumerate(aisos):
-            pars['at'] = ap
-            pars['ap'] = ap
-            aiso = ap
+        for i, aiso in enumerate(xs):
+            pars['aiso'] = aiso#/(1+pars_center['epsilon'])
             xi_mult = cosmo.get_xi_multipoles(r, pars, ell_max=ell_max, 
                             decoupled=decoupled, no_peak=no_peak)
             for j in range(nell):
@@ -56,35 +57,42 @@ def test(cosmo,
                     ylabel+= r'$r^%d [h^{-%d} \mathrm{Mpc}^{%d}]$'%\
                                (scale_r, scale_r, scale_r)
                 ax[j].set_ylabel(ylabel)
-        ax[-1].set_xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
+                ax[j].set_xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
         ax[0].legend(loc=0, fontsize=10)
-        plt.tight_layout()
+        plt.suptitle(title)
+        plt.tight_layout() 
+        fig.subplots_adjust(top=0.9)
+        if not saveroot is None:
+            plt.savefig(saveroot+f'aiso.pdf')
 
     if 'epsilon' in pars_to_test: 
         pars = copy.deepcopy(pars_center)
         fig, ax = plt.subplots(nrows=1, ncols=nell, figsize=figsize)
         xs = pars_to_test['epsilon']
         xs = np.linspace(xs[0], xs[1], xs[2])
-        colors = plt.cm.jet(np.linspace(0, 1, len(epsilons)))
+        colors = plt.cm.jet(np.linspace(0, 1, len(xs)))
 
-        for i, ap in enumerate(pars_to_test['epsilon']):
-            pars['at'] = 1./np.sqrt(ap)
-            pars['ap'] = ap
-            epsilon = (ap*np.sqrt(ap))**(1./3)-1
+        for i, eps in enumerate(xs):
+            pars['epsilon'] = eps
+            print(pars)
             xi_mult = cosmo.get_xi_multipoles(r, pars, ell_max=ell_max,
                             decoupled=decoupled, no_peak=no_peak)
             for j in range(nell):
                 ax[j].plot(r, xi_mult[j]*r**scale_r, 
-                           color=colors[i], 
-                           label=r'$\epsilon = %.3f$'%epsilon)
+                           color=colors[i], lw=1,  
+                           label=r'$\epsilon = %.3f$'%eps)
                 ylabel = r'$\xi_{%d}$'%(j*2)
                 if scale_r:
                     ylabel+= r'$r^%d [h^{-%d} \mathrm{Mpc}^{%d}]$'%\
                                (scale_r, scale_r, scale_r)
                 ax[j].set_ylabel(ylabel)
-        ax[-1].set_xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
+                ax[j].set_xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
         ax[0].legend(loc=0, fontsize=10)
-        plt.tight_layout()
+        plt.suptitle(title)
+        plt.tight_layout() 
+        fig.subplots_adjust(top=0.9)
+        if not saveroot is None:
+            plt.savefig(saveroot+f'epsilon.pdf')
 
     for par in pars_to_test:
         if par == 'aiso' or par == 'epsilon': continue
@@ -99,7 +107,7 @@ def test(cosmo,
                             decoupled=decoupled, no_peak=no_peak)
             for j in range(nell):
                 ax[j].plot(r, xi_mult[j]*r**scale_r, 
-                           color=colors[i], 
+                           color=colors[i], lw=1,
                            label=labels[par]+f' = {val:.2f}')
                 ylabel = r'$\xi_{%d}$'%(j*2)
                 if scale_r:

@@ -345,21 +345,25 @@ class Cosmo:
 
         #-- Read alphas and BAO damping terms
         if 'aiso' in pars:
-            at = pars['aiso']
-            ap = pars['aiso']
-            sigma_par = pars['sigma_nl']
-            sigma_per = pars['sigma_nl']
+            at = pars['aiso']/(1+pars['epsilon'])
+            ap = pars['aiso']*(1+pars['epsilon'])**2
         elif 'ap' in pars:
             at = pars['at']
             ap = pars['ap']
-            sigma_par = pars['sigma_par']
-            sigma_per = pars['sigma_per']
         else:
             at = 1.
             ap = 1.
+       
+        if 'sigma_nl' in pars:
+            sigma_par = pars['sigma_nl']
+            sigma_per = pars['sigma_nl']
+        elif 'sigma_par' in pars:
+            sigma_par = pars['sigma_par']
+            sigma_per = pars['sigma_per']
+        else:
             sigma_par = 0
             sigma_per = 0
-       
+
         #-- Read bias and growth rate / RSD parameter
         bias = pars['bias']
         if 'beta' in pars:
@@ -393,14 +397,10 @@ class Cosmo:
         k2d = self.k2d 
    
         #-- Scale k and mu by alphas 
-        if 'aiso' in pars:
-            ak2d = k2d/at
-            amu = mu*1.
-        else:
-            #-- This is the correct formula (Eq. 58 and 59 from Beutler et al. 2014)
-            F = ap/at
-            ak2d = k2d/at * np.sqrt( 1 + mu2d**2 * (1/F**2 - 1) )
-            amu  = mu/F   / np.sqrt( 1 + mu**2   * (1/F**2 - 1) )
+        #-- This is the correct formula (Eq. 58 and 59 from Beutler et al. 2014)
+        F = ap/at
+        ak2d = k2d/at * np.sqrt( 1 + mu2d**2 * (1/F**2 - 1) )
+        amu  = mu/F   / np.sqrt( 1 + mu**2   * (1/F**2 - 1) )
 
 
         #-- Sideband model (no BAO peak)
