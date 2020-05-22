@@ -6,7 +6,7 @@ import configparser
 import os
 import numpy as np 
 import time
-
+from multiprocessing import Pool
 from galaxy_bao_fitter import *
 from cf_tools import Multipoles
 
@@ -25,6 +25,19 @@ args = parser.parse_args()
 config = configparser.ConfigParser()
 config.read(args.ini)
 
+options = {}
+for k in config['options']:
+    options[k] = config['options'][k] == 'True'
+options['ell_max'] = int(config['options']['ell_max'])
+if options['fit_broadband']:
+    options['bb_min'] = int(config['broadband']['bb_min'])
+    options['bb_max'] = int(config['broadband']['bb_max'])
+options['rmin'] = float(config['cuts']['rmin']) if args.rmin is None else args.rmin
+options['rmax'] = float(config['cuts']['rmax']) if args.rmax is None else args.rmax
+options['data_name'] = config['data']['name'] if args.data_name is None else args.data_name
+options['cov_name'] = config['covariance']['name'] if args.cov_name is None else args.cov_name
+options['cov_scale_factor'] = float(config['covariance']['scalefactor']) if args.cov_scalefactor is None else args.cov_scalefactor
+options['output_root'] = config['data']['output'] if args.output is None else args.output
 
 print('== Galaxy BAO fitter (by Julian Bautista) ==') 
 print('')
@@ -32,155 +45,77 @@ print('')
 
 ##-- Read input multipoles 
 print('Reading data and covariance matrix')
-data_name = config['data']['name'] if args.data_name is None else args.data_name
-m = Multipoles(data_name)
-z_eff = float(config['data']['z_eff'])
-
-options = {}
-for k in config['options']:
-    options[k] = config['options'][k] == 'True'
-
-if not options['fit_quad']:
+m = Multipoles(options['data_name'])
+if options['ell_max'] == 2:
+    m.hexa = None
+elif options['ell_max'] == 0:
     m.quad = None
 
-if not options['fit_hexa']:
-    m.hexa = None
-
 #-- Read covariance matrix
-cov_name = config['covariance']['name'] if args.cov_name is None else args.cov_name
-m.read_cov(cov_name)
-m.coss *= float(config['covariance']['scalefactor']) if args.cov_scalefactor is None else args.cov_scalefactor
+m.read_cov(options['cov_name'])
+m.coss *= options['cov_scale_factor']
 nmocks = int(config['covariance']['nmocks'])
 
 #-- Define output name
-rmin = float(config['cuts']['rmin']) if args.rmin is None else args.rmin
-rmax = float(config['cuts']['rmax']) if args.rmax is None else args.rmax
-
-output_root = config['data']['output'] if args.output is None else args.output
+rmin = options['rmin']
+rmax = options['rmax']
 output = ''.join([
-        output_root,
+        options['output_root'],
         f'-rmin{rmin:.1f}-rmax{rmax:.1f}',
-        '-bb'  *(options['fit_broadband']),
-        '-quad'*(options['fit_quad']),
-        '-hexa'*(options['fit_hexa']),
-        '-iso' *(options['fit_iso']) 
+        '-bb'*(options['fit_broadband']),
+        f'-ellmax{options["ell_max"]}',
+        f'-nopeak'*(options['fit_nopeak'])  
         ])
 output_base = os.path.basename(output)
 
+#-- Read parameters 
+parameters = {}
+for par in config['parameters']:
+    entries = config['parameters'][par].split()
+    parameters[par] = {}
+    parameters[par]['value'] = float(entries[0])
+    parameters[par]['error'] = float(entries[1])
+    parameters[par]['limit_low'] = float(entries[2]) if entries[2] != 'None' else None
+    parameters[par]['limit_upp'] = float(entries[3]) if entries[3] != 'None' else None
+    parameters[par]['fixed'] = (entries[4] == 'fixed')
 
-#-- Define fixed parameters, priors and limits
-fixes = config['fixes']
-if fixes:
-    fixes_dict = {}
-    for k in fixes:
-        fixes_dict[k] = float(fixes[k])
-    fixes=fixes_dict
-else:
-    fixes={}
-
-priors = config['priors']
-if priors:
-    priors_dict = {}
-    for k in priors: 
-        boundaries = np.array(priors[k].split()).astype(float)
-        priors_dict[k] = boundaries 
-    priors = priors_dict
-else:
-    priors={}
-
-limits = config['limits']
-if limits:
-    limits_dict = {}
-    for k in limits: 
-        boundaries = np.array(limits[k].split()).astype(float)
-        limits_dict[k] = boundaries 
-    limits = limits_dict
-else:
-    limits={}
-
-
-
+#-- Define priors 
+if config['priors']:
+    for par in config['priors']:
+        if par not in parameters: 
+            print(f'Warning: parameter {par} not in parameters')
+            continue
+        entries = config['priors'][k].split()
+        parameters[par]['prior_mean'] = float(entries[0]) if entries[0] != 'None' else None
+        parameters[par]['prior_sigma'] = float(entries[1]) if entries[1] != 'None' else None
 
 #-- Define data, cutting over rmin,rmax 
 data = Data(m.r, m.mono, m.coss, 
             quad=m.quad, hexa=m.hexa, 
             nmocks=nmocks, rmax=rmax, rmin=rmin)
 
+#-- Initialize linear power spectrum 
+if 'pk_file' in config['model']:
+    pk_file = config['model']['pk_file'] 
+    pk = PowerSpectrum(pk_file=pk_file)
+else:
+    cosmology     = config['model']['cosmology'] if args.cosmology is None else args.cosmology
+    z_eff = float(config['model']['z_eff'])
+    non_linear_pk = config['model']['non_linear_pk'] == 'True'
+    pk = PowerSpectrum(z=z_eff, name=cosmology, non_linear=non_linear_pk)
 
-#-- Initiate model with BAO peak
-cosmology     = config['model']['cosmology'] if args.cosmology is None else args.cosmology
-norm_pk       = config['model']['norm_pk'] == 'True'
-non_linear_pk = config['model']['non_linear_pk'] == 'True'
-decoupled     = config['model']['decoupled'] == 'True'
-
-bb_min = int(config['broadband']['bb_min'])
-bb_max = int(config['broadband']['bb_max'])
-
-
-print('')
-print('Setting up the model:', cosmology)
-model = Model(fit_broadband = options['fit_broadband'], 
-              fit_quad      = options['fit_quad'], 
-              fit_hexa      = options['fit_hexa'],
-              fit_cross     = options['fit_cross'], 
-              fit_beam      = options['fit_beam'],
-              fit_amp       = options['fit_amp'],
-              fit_beta      = options['fit_beta'],
-              fit_iso       = options['fit_iso'], 
-              name       = cosmology, 
-              norm_pk    = norm_pk, 
-              non_linear = non_linear_pk, 
-              decoupled = decoupled, 
-              z = z_eff, 
-              no_peak = False,
-              bb_min=bb_min, bb_max=bb_max)
 
 #-- Perform fit and export
-print('\nStarting chi2 minimization')
-sec0 = time.time()
-chi2 = Chi2(data=data, model=model)
-chi2.setup_broadband_H()
-chi2.fit(fixes=fixes, priors=priors, limits=limits) 
-chi2.export(output+'.pars')
-chi2.export_covariance(output+'.covpars')
-sec1 = time.time()
-tmin = (sec1-sec0)/60
-print(f'Time elapsed during fit: {tmin:.2f} minutes')
-
-
-#-- Initiate and perform fit without BAO peak
-if options['fit_nopeak']:
+if 'minuit' in config:
+    print('\nStarting chi2 minimization with iMinuit')
+    sec0 = time.time()
+    chi2 = Chi2(data=data, model=pk, parameters=parameters, options=options)
+    chi2.fit() 
+    chi2.export_bestfit_parameters(output+'.pars')
+    chi2.export_covariance(output+'.covpars')
     sec1 = time.time()
-    fixes_nopeak = copy.deepcopy(fixes)
-    if decoupled:
-        if options['fit_iso']:
-            fixes_nopeak['aiso'] = 1
-        else:
-            fixes_nopeak['at'] = 1
-            fixes_nopeak['ap'] = 1
-    model_nopeak = Model( fit_broadband = options['fit_broadband'], 
-                          fit_quad      = options['fit_quad'], 
-                          fit_hexa      = options['fit_hexa'],
-                          fit_cross     = options['fit_cross'], 
-                          fit_beam      = options['fit_beam'],
-                          fit_amp       = options['fit_amp'],
-                          fit_beta      = options['fit_beta'],
-                          fit_iso       = options['fit_iso'], 
-                          name       = cosmology, 
-                          norm_pk    = norm_pk, 
-                          non_linear = non_linear_pk, 
-                          decoupled = decoupled, 
-                          z = z_eff, 
-                          no_peak = True,
-                          bb_min = bb_min, 
-                          bb_max = bb_max)
-    chi2_nopeak = Chi2(data=data, model=model_nopeak)
-    chi2_nopeak.setup_broadband_H()
-    chi2_nopeak.fit(fixes=fixes_nopeak, priors=priors, limits=limits)
-    chi2_nopeak.export(output+'-nopeak.pars')
-    sec2 = time.time()
-    tmin = (sec2-sec1)/60
-    print(f'Time elapsed during fit of no peak: {tmin:.2f} minutes')
+    tmin = (sec1-sec0)/60
+    print(f'Time elapsed during fit: {tmin:.2f} minutes')
 
 #-- Get assymetric error bars
 if 'minos' in config:
@@ -202,9 +137,9 @@ if 'minos' in config:
     print(f'Time elapsed during minos: {tmin:.2f} minutes')
 
 #-- Perform one dimensional scans of chi2
-if 'scan' in config:
+if 'scan1d' in config:
     sec3 = time.time()
-    scan = config['scan']
+    scan = config['scan1d']
     for par in scan: 
         print('\nPerforming scan of chi2 for', par)
         opt = scan[par].split()
@@ -212,37 +147,19 @@ if 'scan' in config:
         upp = float(opt[1])
         nbin =  int(opt[2])
         par_scan, chi2_scan = \
-            chi2.scan(par_name=par, par_nsteps=nbin, par_min=low, par_max=upp)
+            chi2.scan1d(par_name=par, par_nsteps=nbin, par_min=low, par_max=upp)
 
-        #-- chi2 scans
-        fout = open(output+f'.{par}.scan', 'w')
-        print(chi2.best_pars[par], chi2.chi2min, file=fout)
+        #-- export chi2 scans
+        fout = open(output+f'.{par}.scan1d', 'w')
+        print(chi2.best_pars[par]['value'], chi2.chi2min, file=fout)
         for i in range(par_scan.size):
             print( par_scan[i], chi2_scan[i], file=fout)
         fout.close()
-        print('chi2 scan exported to:', output+f'.{par}.scan')
+        print('chi2 scan exported to:', output+f'.{par}.scan1d')
 
     sec4 = time.time()
     tmin = (sec4-sec3)/60
     print(f'Time elapsed during scan1d: {tmin:.2f} minutes')
-
-
-#-- Perform one dimensional scans of chi2 for no peak model
-if 'scan_nopeak' in config:
-    for i in range(0, len(args.scan_nopeak), 4):
-        par = args.scan_nopeak[i]
-        low = float(args.scan_nopeak[i+1])
-        upp = float(args.scan_nopeak[i+2])
-        nbin =  int(args.scan_nopeak[i+3])
-        par_scan_nopeak, chi2_scan_nopeak = \
-            chi2_nopeak.scan(par_name=par, par_nsteps=nbin, par_min=low, par_max=upp)
-
-        #-- chi2 scans
-        fout = open(output+'-nopeak.%s.scan'%par, 'w')
-        print(chi2_nopeak.best_pars[par], chi2_nopeak.chi2min, file=fout)
-        for i in range(par_scan_nopeak.size):
-            print(par_scan_nopeak[i], chi2_scan_nopeak[i], file=fout)
-        fout.close()
 
 
 #-- Perform two dimensional scans of chi2
@@ -261,8 +178,8 @@ if 'scan2d' in config:
 
         filename = output+'.%s.%s.scan2d'%(par_names[0], par_names[1])
         fout = open(filename, 'w')
-        print( chi2.best_pars[par_names[0]], \
-               chi2.best_pars[par_names[1]], \
+        print( chi2.best_pars[par_names[0]]['value'], \
+               chi2.best_pars[par_names[1]]['value'], \
                chi2.chi2min, file=fout)
         for i in range(par_scan0.size):
             for j in range(par_scan1.size):
@@ -277,20 +194,76 @@ if 'scan2d' in config:
 
 if 'plot' in config:
     scale_r = int(config['plot']['scale_r'])
-    fig = chi2.plot_bestfit(label=r'$\chi^2 = %.2f$'%chi2.chi2min, scale_r=scale_r)
+    label = label=r'$\chi^2 = %.2f$'%chi2.chi2min 
     if options['fit_nopeak']:
-        fig = chi2_nopeak.plot_bestfit(fig=fig, model_only=1, scale_r=scale_r, 
-                label=r'$\chi^2_{\rm no \ peak} = %.2f$'%chi2_nopeak.chi2min)
+        label=r'$\chi^2_{\rm no \ peak} = %.2f$'%chi2.chi2min
+    fig = chi2.plot_bestfit(label=label, scale_r=scale_r)
     plt.legend(loc=0)
     plt.tight_layout()
     if 'save' in config['plot']:
         plt.savefig(config['plot']['save'], bbox_inches='tight')
     plt.show()
 
+if 'minuit' in config:
+    chi2.export_model(output+'.model')
 
-chi2.export_model(output+'.model')
+if 'mcmc' in config:
+    print('\nPerforming MCMC chain')
+    sec_0 = time.time()
+
+    if config['mcmc']['sampler'] == 'zeus':
+        import zeus
+        sampling_function = zeus.sampler
+        name_sampler = 'zeus'
+    elif config['mcmc']['sampler'] == 'emcee':
+        import emcee
+        sampling_function = emcee.EnsembleSampler
+        name_sampler = 'emcee'
+    else:
+        print("Need to setup sampler 'zeus' or 'emcee'")
+
+    nsteps = int(config['mcmc']['nsteps'])
+    nwalkers = int(config['mcmc']['nwalkers'])
 
 
 
+
+    chi2 = Chi2(data=data, model=pk, parameters=parameters, options=options)
+    chi2.fit()
+
+    def log_prob(p):
+        return chi2.log_prob(p)
+
+    pars_free = [par for par in parameters if not parameters[par]['fixed']]
+    npars = len(pars_free)
+
+    #-- Use limits to set the start point for random walkers
+    print('\nSetting up starting point of walkers:')
+    start = np.zeros((nwalkers, npars))
+    for j, par in enumerate(pars_free):
+        if par in chi2.best_pars and chi2.best_pars[par]['error']>0.:
+            limit_low = parameters[par]['limit_low']
+            limit_upp = parameters[par]['limit_upp']
+            value = chi2.best_pars[par]['value']
+            error = chi2.best_pars[par]['error']
+            limit_low = np.max([limit_low, value-10*error])
+            limit_upp = np.min([limit_upp, value+10*error])
+            print('Randomly sampling for', par, 'between', limit_low, limit_upp )
+            start[:, j] = np.random.rand(nwalkers)*(limit_upp-limit_low)+limit_low
+
+    if config['mcmc']['use_pool'] == 'True':
+        with Pool() as pool:
+            sampler = sampling_function(nwalkers, npars, log_prob, pool=pool)
+            sampler.run_mcmc(start, nsteps, progress=True)
+    else:
+        sampler = sampling_function(nwalkers, npars, log_prob)
+        sampler.run_mcmc(start, nsteps, progress=True)
+
+    chain = sampler.get_chain(flat=True)
+    np.savetxt(output+f".chain_{name_sampler}", chain)
+
+    sec_1 = time.time()
+    tmin = (sec_1-sec_0)/60
+    print(f'Time elapsed during MCMC: {tmin:.2f} minutes')
 
 

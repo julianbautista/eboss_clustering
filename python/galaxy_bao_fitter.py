@@ -11,160 +11,27 @@ import copy
 from scipy.optimize import curve_fit
 from scipy.ndimage import gaussian_filter1d
 
-class Cosmo:
+class PowerSpectrum:
 
-    def __init__(self, z=0.0, name='challenge', pars=None, 
-                 norm_pk=False, non_linear=False, 
+    def __init__(self, pk_file=None, 
+                 z=0.0, par='challenge', camb_pars=None, 
+                 non_linear=False, 
                  nk=2048, kmax=100., nmu=101):
-        self.get_matter_power_spectrum(z=z, name=name, norm_pk=norm_pk, pars=pars,
-                                       non_linear=non_linear, kmax=kmax, nk=nk)
+
+        if pk_file:
+            self.k, self.pk = np.loadtxt(pk_file, unpack=True)
+        else:
+            import cosmo
+            c = cosmo.Cosmo(z=z, par=par, camb_pars=camb_pars, 
+                    non_linear=non_linear, kmax=kmax, nk=nk)
+            self.k = c.k*1.
+            self.pk = c.pk*1.
+
         self.r, self.xi = self.get_correlation_function()
-        #self.get_sideband()
-        self.get_sideband_scipy()
-        self.get_sideband_power()
+        self.get_sideband_xi()
+        self.get_sideband_pk()
         self.set_2d_arrays(nmu=nmu)
 
-    def get_matter_power_spectrum(self, pars=None, z=0.0, non_linear=0, 
-                                        name='challenge', norm_pk=0, 
-                                        kmax=100., nk=4098):
-
-        #-- to set sigma8 value, scale As by the square of ratio of sigma8
-        if pars is None:
-            pars = camb.CAMBparams()
-            if name == 'challenge':
-                pars.set_cosmology(H0=67.6, ombh2=0.0220,  
-                                    omch2=0.11901745, 
-                                    YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
-                pars.InitPower.set_params(As=2.0406217009089533e-09, ns=0.97)
-            elif name == 'cosmo1':
-                pars.set_cosmology(H0=67.6, ombh2=0.0220,  
-                                    omch2=0.10073838, 
-                                    YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
-                pars.InitPower.set_params(As=2.0406217009089533e-09, ns=0.97)
-            elif name == 'cosmo2':
-                pars.set_cosmology(H0=67.6, ombh2=0.0220,  
-                                    omch2=0.13729646, 
-                                    YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
-                pars.InitPower.set_params(As=2.0406217009089533e-09, ns=0.97)
-            elif name == 'challenge_omegab1':
-                pars.set_cosmology(H0=67.6, ombh2=0.0240,
-                                   omch2=0.11701745,
-                                   YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
-            elif name == 'challenge_omegab2':
-                pars.set_cosmology(H0=67.6, ombh2=0.0200,
-                                   omch2=0.12101645,
-                                   YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
-                pars.InitPower.set_params(As=2.0406217009089533e-09, ns=0.97)
-            elif name == 'qpm':
-                pars.set_cosmology(H0=70., ombh2=0.022470,  
-                                    omch2=0.11963, 
-                                    YHe=0.24,nnu=3.04,  mnu=0, 
-                                    TCMB=2.7250, num_massive_neutrinos=0)
-                pars.InitPower.set_params(As=2.3e-09, ns=0.97)
-            elif name == 'planck':
-                pars.set_cosmology(H0=67.31, ombh2=0.02222, 
-                                   omch2=0.1197, 
-                                   YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
-                pars.InitPower.set_params(As=2.198e-09, ns=0.9655)
-            elif name == 'planck_open':
-                pars.set_cosmology(H0=63.6, ombh2=0.02249, omk=-0.044, 
-                                   omch2=0.1185, 
-                                   YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
-                pars.InitPower.set_params(As=2.0697e-09, ns=0.9688)
-            elif name == 'planck2018':
-                pars.set_cosmology(H0=67.66, ombh2=0.02242,
-                                   omch2=0.119352571517,
-                                   YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
-                pars.InitPower.set_params(As=2.105214963579407e-09, ns=0.9665)
-            elif name == 'outerrim':
-                pars.set_cosmology(H0=71., ombh2=0.02258, 
-                                   #omch2=0.10848, 
-                                   omch2=0.1109, 
-                                   YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.0,
-                                    num_massive_neutrinos=0)
-                pars.InitPower.set_params(As=2.1604128e-09, ns=0.963)
-            elif name == 'ezmock':
-                pars.set_cosmology(H0=67.77, ombh2=0.0221399210, 
-                                   omch2=0.1189110239, 
-                                   YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.0,
-                                    num_massive_neutrinos=0)
-                pars.InitPower.set_params(As=2.11622e-09, ns=0.9611)
-            elif name == 'nseries':
-                #-- Om=0.286, h=0.7, ns=0.96, Ob=0.047, s8=0.820
-                pars.set_cosmology(H0=70, ombh2=0.02303, 
-                                   omch2=0.11711, 
-                                   YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.0,
-                                    num_massive_neutrinos=0)
-                pars.InitPower.set_params(As=2.14681e-09, ns=0.96)
-            else: 
-                print('Error: name of cosmology should be one of the following')
-                print('challenge qpm planck outerrim ezmock')
-                sys.exit(0)
- 
-                
-
-        pars.set_dark_energy()
-        
-        #-- compute power spectrum
-        pars.set_matter_power(redshifts=[z], kmax=2*kmax, k_per_logint=None)
-
-        #-- set non-linear power spectrum
-        if non_linear:
-            pars.NonLinear = camb.model.NonLinear_both
-        else:
-            pars.NonLinear = camb.model.NonLinear_none
-
-        results = camb.get_results(pars)
-        kh, z, pk = results.get_matter_power_spectrum(\
-                        minkh=1.05e-5, maxkh=kmax, npoints = nk)
-
-        
-        sigma8 = results.get_sigma8()
-
-        if norm_pk:
-            pk /= sigma8[0]**2
-
-        self.z = z[0]
-        self.name=name
-        self.norm_pk=norm_pk
-        self.camb_pars = pars
-        self.results = results
-        self.k = kh
-        self.pk = pk[0]
-        self.sigma8 = sigma8[0]
-        self.H_z = results.hubble_parameter(z[0])
-        self.D_A = results.angular_diameter_distance(z[0])
-        self.D_M = self.D_A*(1+z[0]) 
-        self.D_H = 299792.458/self.H_z
-        self.D_V = (z[0]*(self.D_M)**2*self.D_H)**(1./3) 
-        self.r_drag = results.get_derived_params()['rdrag']
-        self.get_dist_rdrag()
-        self.fsigma8 = results.get_fsigma8()[0]
-        self.f = self.fsigma8 / self.sigma8
-        
-        return kh, pk[0]
-
-    def print_distances(self):
-
-        print('z =', self.z)
-        print( 'r_drag = ', self.r_drag) 
-        print( 'H(z)   = ', self.H_z )
-        print('D_H(z)/r_d = ', self.DH_rd)
-        print('D_M(z)/r_d = ', self.DM_rd)
-        print('D_V(z)/r_d = ', self.DV_rd)
-        print(f'sigma_8(z) = ', self.sigma8)
-        print(f'f(z) = ', self.f)
-        print(f'fsig8(z) = ', self.fsigma8)
-
-    
-    def get_dist_rdrag(self):
-        
-        c = 299792.458
-        self.DH_rd = c/self.H_z/self.r_drag
-        self.DM_rd = self.D_M/self.r_drag
-        self.DV_rd = (c*self.z*(self.D_A*(1+self.z))**2/self.H_z)**(1./3)/self.r_drag
-
-        
     def get_correlation_function(self, k=None, pk=None,  
                                  sigma_nl=0., r=None, 
                                  r0=1., inverse=0):
@@ -195,34 +62,7 @@ class Cosmo:
 
         return rout, xiout
 
-    def get_sideband(self, 
-                     fit_range=[[50., 80.], [160., 190.]], 
-                     poly_order=4):
-
-        r = self.r
-        xi = self.xi
-
-        peak_range = [fit_range[0][1], fit_range[1][0]]
-
-        w = ((r>fit_range[0][0])&(r<fit_range[0][1])) | \
-            ((r>fit_range[1][0])&(r<fit_range[1][1]))
-        x_fit = r[w]
-        y_fit = xi[w]*r[w]**3
-
-        coeff = np.polyfit(x_fit, y_fit, poly_order)
-        
-        xi_sideband = xi*1.
-        w_peak = (r>peak_range[0])&(r<peak_range[1])
-        xi_sideband[w_peak] = np.polyval(coeff, r[w_peak])/r[w_peak]**3
-
-        self.xi_model = np.polyval(coeff, r)/r**3
-        self.xi_sideband = xi_sideband
-        self.peak_range = peak_range
-        self.fit_range = fit_range
-
-        return xi_sideband
-
-    def get_sideband_scipy(self, fit_range=[[50., 80.], [160., 190.]], 
+    def get_sideband_xi(self, fit_range=[[50., 80.], [160., 190.]], 
                             plotit=False):
         ''' Gets correlation function without BAO peak using 
             scipy.optimize.minimize function 
@@ -273,7 +113,7 @@ class Cosmo:
         plt.plot(x, ys*x**2)
         plt.plot(x, ym*x**2)
 
-    def get_sideband_power(self):
+    def get_sideband_pk(self):
         ''' Get power spectrum of sideband '''
 
         ks, pks = self.get_correlation_function(k=self.r, pk=self.xi_sideband,
@@ -305,14 +145,6 @@ class Cosmo:
         plt.xlim(0, 200)
         plt.tight_layout()
 
-    def smooth(self, xi_peak, dr=1., sigma_nl=4.):
-        ''' Gaussian smoothing
-            dr: size of bins of xi_peak
-            sigma_nl: smoothing length
-        '''
-        xi_smooth = gaussian_filter1d(xi_peak, sigma=sigma_nl/dr)
-        return xi_smooth 
-
     #def get_multipoles(self, r, xi, f):
     #    ''' Compute multipoles from isotropic correlation function 
     #        with linear redshift-space distortions
@@ -335,15 +167,29 @@ class Cosmo:
         self.mu2d = np.outer(self.mu, np.ones(self.k.size))
         self.k2d  = np.outer(np.ones(nmu), self.k)
 
-    def get_2d_power_spectrum(self, pars, 
-        ell_max=2, no_peak=False, decoupled=False, window=None):
+    def get_2d_power_spectrum(self, pars, no_peak=False, decoupled=False):
+        ''' Compute P(k, mu) for a set of parameters and
+            pk, pk_sideband
+        Input
+        -----
+        pars (dict): available parameters are:
+                     at - alpha transverse
+                     ap - alpha radial
+                     aiso - alpha isotropic
+                     epsilon - anisotropic parameter
+                     bias - linear large scale bias parameter
+                     beta - redshift space distortion parameter
+                     f - growth rate of structures
+                     sigma_nl - isotropic damping
+                     sigma_per - transverse damping of BAO
+                     sigma_par - radial damping of BAO
+                     sigma_s - Finger's of God damping
+                     sigma_rec - Reconstruction damping
+                     bias2 - linear bias for second tracer
+                     beta2 - RSD parameter for second tracer
+                     beam - transverse damping (for 21cm data)
+        '''
 
-        #-- If all parameters are the same as the previous calculation,
-        #-- simply return the same power spectrum (no broadband)
-        #if hasattr(self, 'pars') and pars==self.pars:
-        #    return self.pk2d_out
-
-        #-- Read alphas and BAO damping terms
         if 'aiso' in pars:
             at = pars['aiso']/(1+pars['epsilon'])
             ap = pars['aiso']*(1+pars['epsilon'])**2
@@ -366,27 +212,13 @@ class Cosmo:
 
         #-- Read bias and growth rate / RSD parameter
         bias = pars['bias']
-        if 'beta' in pars:
-            beta = pars['beta']
-        else:
-            f = pars['f']
-            beta = f/bias
-
-        #-- Read reconstruction damping parameter
-        sigma_rec = pars['sigma_rec']
+        beta = pars['beta'] if 'beta' in pars else pars['f']/bias
 
         #-- Read parameters for cross-correlation
         #-- or making them equal if fitting auto-correlation
-        if 'bias2' in pars:
-            bias2 = pars['bias2']
-        else:
-            bias2 = bias*1.
-        if 'beta2' in pars:    
-            beta2 = pars['beta2']
-        else:
-            beta2 = beta*bias/bias2
+        bias2 = pars['bias2'] if 'bias2' in pars else bias*1
+        beta2 = pars['beta2'] if 'beta2' in pars else beta*bias/bias2
  
-
         k = self.k
         mu = self.mu
         pk = self.pk
@@ -400,7 +232,7 @@ class Cosmo:
         #-- This is the correct formula (Eq. 58 and 59 from Beutler et al. 2014)
         F = ap/at
         ak2d = k2d/at * np.sqrt( 1 + mu2d**2 * (1/F**2 - 1) )
-        amu  = mu/F   / np.sqrt( 1 + mu**2   * (1/F**2 - 1) )
+        #amu  = mu/F   / np.sqrt( 1 + mu**2   * (1/F**2 - 1) )
 
 
         #-- Sideband model (no BAO peak)
@@ -421,8 +253,8 @@ class Cosmo:
             pk2d  = pk2d_peak * np.exp(-sigma_nl_k2)
             pk2d += pk2d_nopeak
 
-        
         #-- Compute Kaiser redshift space distortions with reconstruction damping
+        sigma_rec = pars['sigma_rec'] if 'sigma_rec' in pars else 0.
         if sigma_rec == 0:
             recon_damp = np.ones(k.size)
         else:
@@ -433,17 +265,13 @@ class Cosmo:
 
         #-- Fingers of God
         if pars['sigma_s'] != 0:
-            fog = 1./( 1 + np.outer(mu**2, k**2)*pars['sigma_s']**2/2)
+            fog = 1./( 1 + 0.5*np.outer(mu**2, k**2)*pars['sigma_s']**2)
         else:
             fog = 1
 
         #-- This parameters is for intensity mapping only
         if 'beam' in pars:
-            pk2d *= np.exp( - pars['beam']**2*np.outer(1-mu**2, k**2)/2) 
-        
-        #-- This parameters is for intensity mapping only
-        if 'THI' in pars:
-            pk2d *= pars['t_hi']
+            pk2d *= np.exp( - 0.5*pars['beam']**2*np.outer(1-mu**2, k**2)) 
         
         pk2d *= kaiser
         pk2d *= fog**2 
@@ -451,14 +279,7 @@ class Cosmo:
         #if not decoupled:
         #    pk2d_out /= (at**2*ap)
 
-        self.ak2d = ak2d
-        self.pk2d = pk2d
-
         return pk2d
-
-
-
- 
 
     def legendre(self, ell, mu):
 
@@ -496,7 +317,8 @@ class Cosmo:
         return f_mult
 
     def get_xi_multipoles_from_pk(self, k, pk_mult, output_r=None, r0=1.):
-
+        """ Perform Hankel Transform to compute \\xi_\\ell(r) from P_\\ell(k) 
+        """
         nell = len(pk_mult)
         xi_mult = []
         for i in range(nell):
@@ -510,7 +332,8 @@ class Cosmo:
         return r, xi_mult 
 
     def get_pk_multipoles_from_xi(self, r, xi_mult, output_k=None, r0=1.):
-
+        """ Perform Hankel Transform to compute P_\\ell(k) from \\xi_\\ell(r) 
+        """
         nell = len(xi_mult)
         pk_mult = []
         for i in range(nell):
@@ -524,10 +347,19 @@ class Cosmo:
         pk_mult = np.array(pk_mult)
         return k, pk_mult
 
-    def get_xi_multipoles(self, rout, pars, ell_max=4, decoupled=False, no_peak=False, r0=1.):
+    def get_xi_multipoles(self, rout, pars, 
+        ell_max=4, decoupled=False, no_peak=False, r0=1.):
+        """ Compute \\xi_\\ell(r) from a set of parameters
+        Input
+        -----
+        rout (np.array): contains the separation values in Mpc/h
+        pars (dict): contains the parameters required for P(k, \\mu) 
 
+        Output
+        -----
+        xi_mult (np.array): array with shape (n_ell, rout.size) with the \\xi_\\ell(r)
+        """
         pk2d = self.get_2d_power_spectrum(pars, 
-                                          ell_max = ell_max, 
                                           no_peak = no_peak, 
                                           decoupled = decoupled)
         pk_mult = self.get_multipoles(self.mu, pk2d, ell_max=ell_max)
@@ -535,10 +367,19 @@ class Cosmo:
                                                     output_r=rout, r0=r0)
         return xi_mult
 
-    def get_pk_multipoles(self, kout, pars, ell_max=4, decoupled=False, no_peak=False, r0=1., apply_window=False):
+    def get_pk_multipoles(self, kout, pars, 
+        ell_max=4, decoupled=False, no_peak=False, r0=1., apply_window=False):
+        ''' Compute P_\ell(k) from a set of parameters
+        Input
+        -----
+        kout (np.array): contains the wavevector values in h/Mpc
+        pars (dict): contains the parameters required for P(k, \mu) 
 
+        Output
+        -----
+        pk_mult_out (np.array): array with shape (n_ell, kout.size) with the P_\ell(k)
+        '''
         pk2d = self.get_2d_power_spectrum(pars, 
-                                          ell_max = ell_max, 
                                           no_peak = no_peak, 
                                           decoupled = decoupled)
         pk_mult = self.get_multipoles(self.mu, pk2d, ell_max=ell_max)
@@ -585,19 +426,6 @@ class Cosmo:
     
         xi_conv = np.array([xi_mono, xi_quad, xi_hexa])
         return xi_conv
-
-
-    @staticmethod
-    def get_alphas(cosmo, cosmo_fid):
-
-        at = (cosmo.D_M/cosmo.r_drag)/(cosmo_fid.D_M/cosmo_fid.r_drag)
-        ap = (cosmo.D_H/cosmo.r_drag)/(cosmo_fid.D_H/cosmo_fid.r_drag)
-        #-- Padmanabhan & White 2009
-        alpha = at**(2./3.)*ap**(1./3)
-        epsilon = (ap/at)**(1./3) - 1
-        print('at =', at, ' ap =', ap)
-        print('aiso =', alpha, ' epsilon =', epsilon)
-        return at, ap, alpha, epsilon   
     
 class Data: 
 
@@ -647,214 +475,32 @@ class Data:
             correction = (1 - (cf.size + 1.)/(nmocks-1))
             self.icoss *= correction
     
-
-class Model:
-
-    def __init__(self, name='challenge', z = 0, 
-                 fit_broadband=True, bb_min=-2, bb_max=0, 
-                 norm_pk=False, non_linear=False, no_peak=False, decoupled=False,
-                 fit_quad=False, fit_hexa=False,
-                 fit_iso=False, 
-                 fit_beta=False, fit_cross=False, 
-                 fit_amp=False, fit_beam=False):
-
-        cosmo = Cosmo(z=z, name=name, norm_pk=norm_pk, non_linear=non_linear)
-
-        #-- define parameter dictionary
-        pars = {}
-        pars_names = []
-        
-        if fit_iso:
-            pars_names += ['aiso']
-            pars['aiso'] = 1.0
-            pars_names += ['sigma_nl']
-            pars['sigma_nl'] = 6.
-        else:
-            pars_names += ['at', 'ap']
-            pars['at'] = 1.0
-            pars['ap'] = 1.0
-            pars_names += ['sigma_per', 'sigma_par']
-            pars['sigma_per'] = 6.
-            pars['sigma_par'] = 10.
-         
-        pars_names += ['bias', 'sigma_s', 'sigma_rec']
-        pars['bias'] = 3.0
-        pars['sigma_s'] = 4.
-        pars['sigma_rec'] = 15.
-        
-        if fit_beta:
-            pars['beta'] = 0.3
-            pars_names += ['beta']
-        else:
-            pars['f'] = 0.8
-            pars_names += ['f']
-
-        if fit_cross:
-            pars_names += ['bias2']        
-            pars['bias2'] = 1.
-            if fit_beta:
-                pars_names += ['beta2']
-                pars['beta2'] = 0.5
-
-        if fit_amp:
-            pars['t_hi'] = 0.3e-3
-            pars_names += ['t_hi']
-
-        if fit_beam:
-            pars_names += ['beam']
-            pars['beam'] = 4.
-
-        #if fit_broadband:
-        #    for i, bb_power in enumerate(np.arange(bb_min, bb_max+1)):
-        #        pars_names.append('bb_%d_mono'%i)
-        #        pars['bb_%d_mono'%i] = 0.
-        #        if fit_quad:
-        #            pars_names.append('bb_%d_quad'%i)
-        #            pars['bb_%d_quad'%i] = 0.
-        #        if fit_hexa:
-        #            pars_names.append('bb_%d_hexa'%i)
-        #            pars['bb_%d_hexa'%i] = 0.
-
-        self.bb_min = bb_min
-        self.bb_max = bb_max
-        self.pars = pars
-        self.pars_names = pars_names
-        self.fit_broadband = fit_broadband
-        self.fit_quad = fit_quad
-        self.no_peak = no_peak
-        self.decoupled = decoupled
-        self.fit_cross = fit_cross
-        self.fit_beam = fit_beam
-        self.fit_beta = fit_beta
-        self.fit_amp = fit_amp
-        self.fit_hexa = fit_hexa
-        self.cosmo = cosmo
-        
-    def value(self, rout, pars):
-
-        ell_max = 0 + 2*(self.fit_quad) + 2*(self.fit_hexa)
-        cf_out = self.cosmo.get_xi_multipoles(rout,  pars, 
-                            ell_max=ell_max, no_peak=self.no_peak,
-                            decoupled=self.decoupled)
-        return cf_out.ravel()
-
-    def get_broadband(self, rout, pars):
-  
-        monobb = rout*0.
-        quadbb = rout*0.
-        hexabb = rout*0.
-       
-        if hasattr(self, 'powers'):
-            powers = self.powers
-        else: 
-            power_min = self.bb_min
-            power_max = self.bb_max
-            powers = np.arange(power_min, power_max+1)
-            self.powers = powers
-        for i in range(powers.size):
-            power = powers[i]
-            #monobb += pars['bb_%d_mono'%i]*((rout)**power)
-            coeff = np.prod([pars[f'bb_{j}_mono'] for j in range(i+1)])
-            monobb += coeff * rout**power 
-            if self.fit_quad:
-                coeff = np.prod([pars[f'bb_{j}_quad'] for j in range(i+1)])
-                quadbb += coeff * rout**power 
-                #quadbb += pars['bb_%d_quad'%i]*((rout)**power)
-            if self.fit_hexa: 
-                coeff = np.prod([pars[f'bb_{j}_hexa'] for j in range(i+1)])
-                hexabb += coeff * rout**power 
-                #hexabb += pars['bb_%d_hexa'%i]*((rout)**power)
-
-        bb = monobb
-        if self.fit_quad:
-            bb = np.append(bb, quadbb)
-        if self.fit_hexa:
-            bb = np.append(bb, hexabb)
-        self.bb = bb
-
-        return bb
-
-
-
-
 class Chi2: 
 
-    def __init__(self, data=None, model=None, fin=None, z=0.72):
-        if data:
-            self.data = data
-        if model:
-            self.model = model
-        if fin:
-            self.read_galaxy_pars(fin, z=z)
+    def __init__(self, data=None, model=None, parameters=None, options=None):
+        self.data = data
+        self.model = model
+        self.parameters = parameters
+        self.options = options
+        self.setup_broadband_H()
+        #print(parameters)
 
-
-    def read_galaxy_pars(self, fin, z=0.71):
-
-        f = open(fin)
-        f.readline()
-        line = f.readline().split()
-        chi2min, ndata, npars, rchi2min = \
-                float(line[0]), int(line[1]), int(line[2]), float(line[3])
-        f.readline()
-    
-        best_pars = {}
-        errors = {}
-        for line in f.readlines():
-            line = line.split()
-            parname = line[0]
-            best_pars[parname] = float(line[1])
-            errors[parname] = float(line[2])
-
-        fit_iso = True if 'aiso' in best_pars else False
-        no_peak = True if '-nopeak' in fin else False
-        fit_quad = True if '-quad' in fin else False
-        fit_hexa = True if '-hexa' in fin else False
-
-        if 'bb_0_mono' in best_pars.keys():
-            fit_broadband = True
-        else:
-            fit_broadband = False
-
-
-        self.model = Model(fit_broadband=fit_broadband, fit_iso=fit_iso,
-                           fit_quad=fit_quad, fit_hexa=fit_hexa, 
-                           no_peak=no_peak, decoupled=decoupled, norm_pk=0,
-                           z=z)
-        self.model.cosmo.get_dist_rdrag()
-        self.DM_rd = self.model.cosmo.DM_rd
-        self.DH_rd = self.model.cosmo.DH_rd
-        self.DV_rd = self.model.cosmo.DV_rd
-        self.model.pars = best_pars
-        self.chi2min = chi2min
-        self.ndata = ndata
-        self.npars = npars
-        self.rchi2min = rchi2min
-        self.best_pars=best_pars
-        self.errors= errors
-    
     def get_model(self, r, pars=None):
         if pars is None:
             pars = self.best_pars
-
-        pars_cosmo = {par: pars[par] for par in pars if not par.startswith('bb')}
-        model = self.model.value(r, pars_cosmo)
-
-        #if self.model.fit_broadband:
-            
-         #   bb = self.fit_broadband(cf-model) 
-            #pars_bb = {par: pars[par] for par in pars if par.startswith('bb')}
-            #bb = self.model.get_broadband(r, pars_bb)
-         #   model += bb
-
-        return model
+        model = self.model.get_xi_multipoles(r, pars, 
+            ell_max  =self.options['ell_max'], 
+            decoupled=self.options['decouple_peak'], 
+            no_peak  =self.options['fit_nopeak'])
+        return model.ravel()
     
     def setup_broadband_H(self, r=None, bb_min=None, bb_max=None):
         if r is None:
             r = self.data.rr
         if bb_min is None:
-            bb_min = self.model.bb_min
+            bb_min = self.options['bb_min']
         if bb_max is None:
-            bb_max = self.model.bb_max
+            bb_max = self.options['bb_max']
 
         rr = np.unique(r)
         nmul = r.size//rr.size
@@ -863,7 +509,6 @@ class Chi2:
         H = np.kron(np.eye(nmul), H)
         self.H = H
         return H
-    
 
     def get_broadband(self, bb_pars, r=None, H=None):
 
@@ -882,113 +527,142 @@ class Chi2:
 
         return bb_pars
 
-    def __call__(self, *p):
+    def __call__(self, p):
+        ''' Compute chi2 for a set of free parameters (and only the free parameters!)
+        '''
         pars = {}
-        for i, name in enumerate(self.model.pars_names):
-            pars[name] = p[i]
+        i = 0
+        for par in self.parameters:
+            if self.parameters[par]['fixed']:
+                pars[par] = self.parameters[par]['value']
+            else:
+                pars[par] = p[i]
+                limit_low = self.parameters[par]['limit_low']
+                if not limit_low is None and p[i]<limit_low:
+                    return np.inf
+                limit_upp = self.parameters[par]['limit_upp']
+                if not limit_upp is None and p[i]>limit_upp:
+                    return np.inf
+                i+=1
 
         model = self.get_model(self.data.r, pars)
         residual = self.data.cf - model
         inv_cov = self.data.icoss
-        if self.model.fit_broadband:
+
+        if self.options['fit_broadband']:
             bb_pars = self.fit_broadband(residual, inv_cov, self.H)
             bb = self.get_broadband(bb_pars, H=self.H)
-            #self.bb_pars = bb_pars
             residual -= bb
 
         chi2 = np.dot(residual, np.dot(inv_cov, residual))
 
-        if self.priors:
-            for key in self.priors.keys():
-                mean = self.priors[key][0]
-                sig = self.priors[key][1]
-                chi2 += ((pars[key]-mean)/sig)**2
+        for par in pars:
+            if par in self.parameters and 'prior_mean' in self.parameters[par]:
+                mean = self.parameters[par]['prior_mean']
+                sigma = self.parameters[par]['prior_sigma']
+                chi2 += ((pars[par]-mean)/sigma)**2
 
         return chi2
 
-    def fit(self, limits=None, fixes=None, priors=None):
+    def log_prob(self, p):
+        #print(p)
+        return -0.5*self.__call__(p)    
 
-        init_pars = {}
-        for par in self.model.pars:
-            value = self.model.pars[par]
-            init_pars[par] = value
-            init_pars['error_'+par] = abs(value)/10. if value!=0 else 0.1
-       
-        self.fixes = fixes
-        if fixes:
-            for key in fixes.keys():
-                init_pars[key] = fixes[key]
-                init_pars['fix_'+key] = True 
-        if limits:
-            for key in limits.keys():
-                init_pars['limit_'+key] = (limits[key][0], limits[key][1])
+    def fit(self):
 
+        #-- Initialise iMinuit dictionaty for initial guess of parameters
+        #-- to be fitted, excluding those fixed.
+        minuit_options = {}
+        pars_to_fit_values = []
+        pars_to_fit_name = []
+        for par in self.parameters:
+            if self.parameters[par]['fixed'] == True: 
+                continue
+            pars_to_fit_name.append(par)
+            pars_to_fit_values.append(self.parameters[par]['value'])
+            minuit_options['error_'+par] = self.parameters[par]['error']
+            minuit_options['limit_'+par] = (self.parameters[par]['limit_low'], 
+                                            self.parameters[par]['limit_upp'])
 
-        self.priors = priors
-        
-        self.init_pars = init_pars
-
-        mig = iminuit.Minuit(self, throw_nan=False, 
-                             forced_parameters=self.model.pars_names, 
-                             print_level=1, errordef=1, 
-                             **init_pars)
+        mig = iminuit.Minuit.from_array_func(self, tuple(pars_to_fit_values),
+                                            name = tuple(pars_to_fit_name),
+                             print_level=1, errordef=1, throw_nan=False,
+                             **minuit_options)
         #print(mig.get_param_states())
         #mig.tol = 0.01
         imin = mig.migrad()
         print(mig.get_param_states())
 
-        if self.model.fit_broadband:
-            print('Broadband terms')    
-            model = self.get_model(self.data.r, mig.values)
+        best_pars = {}
+        for par in self.parameters:
+            best_pars[par] = {}
+            if self.parameters[par]['fixed']:
+                best_pars[par]['value'] = self.parameters[par]['value']
+                best_pars[par]['error'] = 0
+            else:
+                best_pars[par]['value'] = mig.values[par]
+                best_pars[par]['error'] = mig.errors[par]
+
+        if self.options['fit_broadband']==True:
+            print('\nBroadband terms')
+            pars = {par: best_pars[par]['value'] for par in best_pars}    
+            model = self.get_model(self.data.r, pars)
             residual = self.data.cf - model
             inv_cov = self.data.icoss
             bb_pars = self.fit_broadband(residual, inv_cov, self.H)
-            print(bb_pars)
+            self.bb_pars = bb_pars
+            ibb = np.arange(self.options['bb_max']-self.options['bb_min']+1)
+            bb_name = []
+            bb_name+= [f'bb_{i}_mono' for i in ibb]
+            if self.options['ell_max']>=2:
+                bb_name+= [f'bb_{i}_quad' for i in ibb]
+            if self.options['ell_max']>=4:
+                bb_name+= [f'bb_{i}_hexa' for i in ibb]
+            for bb, bbn in zip(bb_pars, bb_name):
+                best_pars[bbn] = {'value': bb, 'error': 0}
+                print(bbn, bb)
 
         #mig.hesse()
+        print('\nApproximate correlation coefficients:')
         print(mig.matrix(correlation=True))
-        self.mig = mig
-        self.imin = imin
+        #self.mig = mig
+        #self.imin = imin
         self.is_valid = imin[0]['is_valid']
-        self.best_pars = mig.values 
-        self.errors = mig.errors
+        self.best_pars = best_pars
         self.chi2min = mig.fval
         self.ndata = self.data.cf.size
-        self.npars = mig.narg
-        if self.model.fit_broadband:
+        self.npars = len(pars_to_fit_name)
+        if self.options['fit_broadband']:
             self.npars += bb_pars.size
-            self.bb_pars = bb_pars
-        self.covariance = mig.covariance
-        for par in self.model.pars_names:
-            if mig.fitarg['fix_'+par]:
-                self.npars -= 1
+        #self.covariance = mig.covariance
         self.rchi2min = self.chi2min/(self.ndata-self.npars)
-        print(f'chi2/(ndata-npars) = {self.chi2min:.2f}/({self.ndata}-{self.npars}) = {self.rchi2min:.2f}') 
+        print(f'\n chi2/(ndata-npars) = {self.chi2min:.2f}/({self.ndata}-{self.npars}) = {self.rchi2min:.2f}') 
 
-    def get_correlation_coefficient(self, par_name1, par_name2):
+    def get_correlation_coefficient(self, par_par1, par_par2):
 
         if not hasattr(self, 'covariance'):
             print('Chi2 was not yet minimized')
             return
         
         cov = self.covariance
-        var1 = cov[par_name1, par_name1]
-        var2 = cov[par_name2, par_name2]
-        cov12 = cov[par_name1, par_name2]
+        var1 = cov[par_par1, par_par1]
+        var2 = cov[par_par2, par_par2]
+        cov12 = cov[par_par1, par_par2]
         corr_coeff = cov12/np.sqrt(var1*var2)
         return corr_coeff
         
 
-    def plot_bestfit(self, fig=None, model_only=0, scale_r=2, label=None, figsize=(12, 5)):
+    def plot_bestfit(self, fig=None, model_only=0, scale_r=2, label=None, figsize=(10, 4)):
 
         data = self.data
         model = self.model
-        nmul = 1+1*model.fit_quad+1*model.fit_hexa
+        nmul = self.options['ell_max']//2+1
         r = data.r
         cf = data.cf
         dcf = np.sqrt(np.diag(data.coss))
         r_model = np.linspace(r.min(), r.max(), 200)
-        cf_model = self.get_model(r_model, self.best_pars)
+        pars = {par: self.best_pars[par]['value'] for par in self.best_pars}
+        cf_model = self.get_model(r_model, pars)
         if hasattr(self, 'bb_pars'):
             bb_model = self.get_broadband(self.bb_pars, r=np.tile(r_model, nmul))
             cf_model += bb_model
@@ -1028,37 +702,38 @@ class Chi2:
                               (scale_r, i*2, -scale_r, scale_r))
             else:
                 ax.set_ylabel(r'$\xi_{%d}$'%(i*2), fontsize=16)
-            ax.set_xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$', fontsize=16)
+            ax.set_xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$', fontsize=12)
 
         return fig
 
-    def scan(self, par_name='alpha', par_min=0.8, par_max=1.2, par_nsteps=400):
+    def scan1d(self, par_name='alpha', par_min=0.8, par_max=1.2, par_nsteps=400):
 
-        init_pars = {}
-        for par in self.model.pars.items():
-            name = par[0]
-            value = par[1]
-            init_pars[name] = value
-            init_pars['error_'+name] = abs(value)/10. if value!=0 else 0.1
-
-        init_pars['fix_'+par_name] = True
+        #-- Initialise chi2 grid
         par_grid = np.linspace(par_min, par_max, par_nsteps)
         chi2_grid = np.zeros(par_nsteps)
-       
-        if self.fixes:
-            for key in self.fixes:
-                init_pars[key] = self.fixes[key]
-                init_pars['fix_'+key] = True 
 
         for i in range(par_nsteps):
-            value = par_grid[i]
-            init_pars[par_name] = value
+            self.parameters[par_name]['value'] = par_grid[i]
+            self.parameters[par_name]['fixed'] = True
 
-            mig = iminuit.Minuit(self, forced_parameters=self.model.pars_names, \
-                                 print_level=1, errordef=1, \
-                                 **init_pars)
+            minuit_options = {}
+            pars_to_fit_values = []
+            pars_to_fit_name = []
+            for par in self.parameters:
+                if self.parameters[par]['fixed'] == True: 
+                    continue
+                pars_to_fit_name.append(par)
+                pars_to_fit_values.append(self.best_pars[par]['value'])
+                minuit_options['error_'+par] = self.best_pars[par]['error']
+                minuit_options['limit_'+par] = (self.parameters[par]['limit_low'], 
+                                                self.parameters[par]['limit_upp'])
+
+            mig = iminuit.Minuit.from_array_func(self, tuple(pars_to_fit_values),
+                                            name = tuple(pars_to_fit_name),
+                             print_level=0, errordef=1, throw_nan=False,
+                             **minuit_options)
             mig.migrad()
-            print( 'scanning: %s = %.5f  chi2 = %.4f'%(par_name, value, mig.fval))
+            print( 'scanning: %s = %.5f  chi2 = %.4f'%(par_name, par_grid[i], mig.fval))
             chi2_grid[i] = mig.fval
 
         return par_grid, chi2_grid
@@ -1068,125 +743,61 @@ class Chi2:
                 par_max=[1.2, 1.2], \
                 par_nsteps=[40, 40] ):
 
-        init_pars = {}
-        for par in self.model.pars.items():
-            name = par[0]
-            value = par[1]
-            init_pars[name] = value
-            init_pars['error_'+name] = abs(value)/10. if value!=0 else 0.1
-    
-
-        init_pars['fix_'+par_names[0]] = True
+        #-- Initialise chi2 grid
+        par0 = par_names[0]
+        par1 = par_names[1]
         par_grid0 = np.linspace(par_min[0], par_max[0], par_nsteps[0])
-        init_pars['fix_'+par_names[1]] = True
         par_grid1 = np.linspace(par_min[1], par_max[1], par_nsteps[1])
-
         chi2_grid = np.zeros(par_nsteps)
-       
-        if self.fixes:
-            for key in self.fixes:
-                init_pars[key] = self.fixes[key]
-                init_pars['fix_'+key] = True 
 
         for i in range(par_nsteps[0]):
-            value0 = par_grid0[i]
-            init_pars[par_names[0]] = value0
+            self.parameters[par0]['value'] = par_grid0[i]
+            self.parameters[par0]['fixed'] = True
             for j in range(par_nsteps[1]):
-                value1 = par_grid1[j]
-                init_pars[par_names[1]] = value1
-                mig = iminuit.Minuit(self,
-                         forced_parameters=self.model.pars_names, 
-                         print_level=0, errordef=1, 
-                         **init_pars)
+                self.parameters[par1]['value'] = par_grid1[j]
+                self.parameters[par1]['fixed'] = True
+
+                minuit_options = {}
+                pars_to_fit_values = []
+                pars_to_fit_name = []
+                for par in self.parameters:
+                    if self.parameters[par]['fixed'] == True: 
+                        continue
+                    pars_to_fit_name.append(par)
+                    pars_to_fit_values.append(self.best_pars[par]['value'])
+                    minuit_options['error_'+par] = self.best_pars[par]['error']
+                    minuit_options['limit_'+par] = (self.parameters[par]['limit_low'], 
+                                                    self.parameters[par]['limit_upp'])
+
+                mig = iminuit.Minuit.from_array_func(self, tuple(pars_to_fit_values),
+                                                name = tuple(pars_to_fit_name),
+                                print_level=0, errordef=1, throw_nan=False,
+                                **minuit_options)
                 mig.migrad()
                 print( 'scanning: %s = %.5f   %s = %.5f    chi2 = %.4f'%\
-                        (par_names[0], value0, par_names[1], value1, mig.fval))
+                        (par0, par_grid0[i], par0, par_grid1[j], mig.fval))
                 chi2_grid[i, j] = mig.fval
 
         return par_grid0, par_grid1, chi2_grid
 
-    def read_scan1d(self, fin):
-
-        sfin = fin.split('.')
-        par_name = sfin[-2]
-        x, chi2 = np.loadtxt(fin, unpack=1)
-        bestx = x[0]
-        chi2min = chi2[0]
-        x = np.unique(x[1:])
-        chi2scan = chi2[1:]
-        self.chi2scan = chi2scan
-        self.x=x
-        self.par_name=par_name
-        self.bestx=bestx
-        self.chi2min=chi2min
-
-    def plot_scan1d(self, ls=None, 
-                    color=None,  alpha=None, label=None):
-
-        plt.plot(self.x, self.chi2scan-self.chi2min, ls=ls, 
-                color=color, alpha=alpha, label=label)
-
-    def read_scan2d(self, fin):
-
-        sfin = fin.split('.')
-        
-        x, y, chi2 = np.loadtxt(fin, unpack=1)
-        bestx = x[0]
-        besty = y[0]
-        chi2min = chi2[0]
-        if chi2min>chi2.min():
-            chi2min = chi2.min()
-            i=0
-        else:
-            i=1
-
-        x = np.unique(x[i:])
-        y = np.unique(y[i:])
-        chi2scan2d = np.reshape(chi2[i:], (x.size, y.size)).transpose()
-        
-        self.chi2scan2d = chi2scan2d
-        self.x=x
-        self.y=y
-        self.bestx=bestx
-        self.besty=besty
-        self.chi2min=chi2min
-
-    def plot_scan2d(self, levels=[2.3, 6.18, 11.83], ls=['-', '--', ':'], 
-                    color='b',  alpha=1.0, label=None, scale_dist= False):
-
-        for i in range(len(levels)):
-            if i!=0:
-                label=None
-            if scale_dist:
-                DM_rd = self.DM_rd
-                DH_rd = self.DH_rd
-                x = self.x*DM_rd
-                y = self.y*DH_rd
-            else:
-                x = self.x*1.
-                y = self.y*1.
-            plt.contour(x, y, self.chi2scan2d-self.chi2min, 
-                        levels=[levels[i]], 
-                        linestyles=[ls[i]], colors=color, alpha=alpha,
-                        label=label)
-
-    def export(self, fout):
+    def export_bestfit_parameters(self, fout):
 
         fout = open(fout, 'w')
-        fout.write('chi2    ndata    npars   rchi2\n')
-        fout.write('%f \t %d \t %d \t %f \n'%\
-                (self.chi2min, self.ndata, self.npars, self.rchi2min))
-        fout.write('param \t value \t error\n')
+        print(f'chi2  {self.chi2min}', file=fout)
+        print(f'ndata {self.ndata}', file=fout)
+        print(f'npars {self.npars}', file=fout)
+        print(f'rchi2 {self.rchi2min}', file=fout)
        
-        pars_names = np.sort([p for p in self.best_pars])
-        for p in pars_names:
-            print(p, self.best_pars[p], self.errors[p], file=fout)
+        for p in self.best_pars:
+            print(p,          self.best_pars[p]['value'], file=fout)
+            print(p+'_error', self.best_pars[p]['error'], file=fout)
+
         fout.close()
 
     def export_covariance(self, fout):
 
         fout = open(fout, 'w')
-        print('# par_name1 par_name2 covariance corr_coeff', file=fout)
+        print('# par_par1 par_par2 covariance corr_coeff', file=fout)
         cov = self.covariance
         for k in cov:
             corr = cov[k]/np.sqrt(cov[(k[0], k[0])]*cov[(k[1], k[1])])
@@ -1195,11 +806,12 @@ class Chi2:
 
     def export_model(self, fout):
 
-        model = self.model
-        nmul = 1+1*model.fit_quad+1*model.fit_hexa
-        r = self.data.r
-        r_model = np.linspace(r.min(), r.max(), 200)
-        cf_model = self.get_model(r_model, self.best_pars)
+        nmul = self.options['ell_max']//2+1
+        nr = 200
+        r_model = np.linspace(self.data.r.min(), self.data.r.max(), nr)
+        pars = {par: self.best_pars[par]['value'] for par in self.best_pars}  
+        cf_model = self.get_model(r_model, pars)
+
         if hasattr(self, 'bb_pars'):
             bb_model = self.get_broadband(self.bb_pars, r=np.tile(r_model, nmul))
             cf_model += bb_model
@@ -1207,18 +819,21 @@ class Chi2:
         else:
             bb=False
 
-
-        cf_model = cf_model.reshape((nmul, 200)) 
+        cf_model = cf_model.reshape((nmul, nr)) 
         if bb:
-            bb_model = bb_model.reshape((nmul, 200)) 
+            bb_model = bb_model.reshape((nmul, nr)) 
         
         fout = open(fout, 'w')
-        line = '#r mono '+'quad '*model.fit_quad+'hexa '*model.fit_hexa
+        line = '#r mono '
+        line += 'quad '*(self.options['ell_max']>=2)
+        line += 'hexa '*(self.options['ell_max']>=4)
         if bb:
-            line += 'bb_mono '+'bb_quad '*model.fit_quad+'bb_hexa'*model.fit_hexa
+            line += 'bb_mono '
+            line += 'bb_quad '*(self.options['ell_max']>=2)
+            line += 'bb_hexa '*(self.options['ell_max']>=4)
         print(line, file=fout)
 
-        for i in range(200):
+        for i in range(nr):
             line = f'{r_model[i]}  '
             for l in range(nmul):
                 line += f'{cf_model[l, i]}  ' 
