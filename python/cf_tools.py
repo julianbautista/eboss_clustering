@@ -630,8 +630,8 @@ class Multipoles:
             if not self.hexa is None:
                 line+= f' {self.hexa[i]}'
             print(line, file=fout)
-        fout.close()
-    
+        fout.close()   
+ 
     def export_cov(self, fout):
         coss = self.coss
         fout = open(fout, 'w')
