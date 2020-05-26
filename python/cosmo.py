@@ -5,53 +5,109 @@ import sys
 #-- cosmology
 class CosmoSimple:
 
-    def __init__(self, omega_m=0.31, h=0.676):
-        print(f'Initializing cosmology with omega_m = {omega_m:.2f}')
-        c = 299792.458 #km/s
-        omega_lambda = 1 - omega_m
-        ztab = np.linspace(0., 5., 10000)
-        E_z = np.sqrt(omega_lambda + omega_m*(1+ztab)**3)
-        rtab = np.zeros(ztab.size)
-        dz = ztab[1]-ztab[0]
-        for i in range(1, ztab.size):
-            rtab[i] = rtab[i-1] + c * (1/E_z[i-1]+1/E_z[i])/2. * dz / 100.
+    def __init__(self, omega_m=0.31, flat=True, omega_de=0, h=0.676, 
+                mass_neutrinos=0.06, n_eff=3.046, zmax=5., nz=10000):
 
-        self.h = h
-        self.c = c
-        self.omega_m = omega_m
-        self.omega_lambda = omega_lambda
-        self.ztab = ztab
-        self.rtab = rtab 
+        c = 299792.458 #km/s
+        #-- For T_CMB = 2.7255 Kelvin
+        omega_photon = 2.4728018939788232e-05 / h**2
+        omega_nu = mass_neutrinos/93.0033/h**2
+        n_massless_neutrinos = n_eff - n_eff/3*(mass_neutrinos>0)
+        omega_r = omega_photon*(1 + 7/8*n_massless_neutrinos*(4/11)**(4/3))
+        if flat:
+            omega_de = 1 - omega_m - omega_r
+            omega_k = 0
+        else:
+            omega_k = 1 - omega_de - omega_m - omega_r
+
+        z_tab = np.linspace(0., zmax, nz)
+        #-- Dimensionless Hubble expansion rate
+        E_z = np.sqrt(omega_de + omega_m*(1+z_tab)**3 + omega_r*(1+z_tab)**4 + omega_k*(1+z_tab)**2)
+        
+        #-- Comoving distance table
+        r_tab = np.zeros(z_tab.size) 
+        for i in range(1, z_tab.size):
+            r_tab[i] = np.trapz(c/h/100/E_z[:i+1], x=z_tab[:i+1])
+
+        pars = {}
+        pars['h'] = h
+        pars['c'] = c
+        pars['omega_k'] = omega_k
+        pars['omega_nu'] = omega_nu
+        pars['omega_ph'] = omega_photon
+        pars['omega_m'] = omega_m
+        pars['omega_de'] = omega_de
+        pars['mass_neutrinos'] = mass_neutrinos
+        pars['N_eff'] = n_eff
+        self.flat = flat
+        self.pars = pars
+        self.z_tab = z_tab
+        self.r_tab = r_tab 
         self.E_z = E_z
 
     def get_hubble(self, z):
         '''Hubble rate in km/s/Mpc'''
-        return np.interp(z, self.ztab, self.E_z*self.h*100.)
+        H0 = self.pars['h']*100
+        return np.interp(z, self.z_tab, self.E_z)*H0
 
     def get_comoving_distance(self, z):
-        '''Comoving distance in Mpc/h '''
-        return np.interp(z, self.ztab, self.rtab)
+        '''Comoving distance in Mpc '''
+
+        return np.interp(z, self.z_tab, self.r_tab)
+
+    def get_transverse_comoving_distance(self, z):
+        '''Transverse comoving distance, including non-flat cosmologies''' 
+
+        r = self.get_comoving_distance(z)
+        if self.flat:
+            return r
+        else:
+            dh = self.pars['c']/self.pars['h']/100
+            omega_k = self.pars['omega_k']
+            return (dh/np.sqrt(omega_k+0j)*np.sinh( np.sqrt(omega_k+0j)*r/dh)).real
+
+    def get_DM(self, z):
+        '''Comoving angular diameter distance in Mpc '''
+
+        D_M = self.get_transverse_comoving_distance(z)
+        return D_M
+
+    def get_DA(self, z):
+        '''Angular diameter distance in Mpc'''
+
+        D_A = self.get_transverse_comoving_distance(z)/(1+z)
+        return D_A
+
+    def get_DH(self, z):
+        '''Hubble distance c/H(z) in Mpc '''
+
+        D_H = self.c/self.get_hubble(z)
+        return D_H
 
     def get_DV(self, z):
         ''' Get spherically averaged distance D_V(z) = (c*z*D_M**2/H)**(1/3) in Mpc'''
-        #-- This equation below is only valid in flat space
-        #-- Dividing by h to get DV in Mpc to match H which is in km/s/Mpc
-        D_M = self.get_comoving_distance(z)/self.h
-        H = self.get_hubble(z)
-        D_V = (self.c*z*D_M**2/H)**(1/3)
+
+        D_M = self.get_DM(z)
+        D_H = self.get_DH(z)
+        D_V = (z*D_M**2*D_H)**(1/3)
         return D_V
 
     def get_redshift(self, r):
         '''Get redshift from comoving distance in Mpc/h units'''
-        return np.interp(r, self.rtab, self.ztab)
+
+        return np.interp(r, self.r_tab, self.z_tab)
 
     def shell_vol(self, zmin, zmax):
-        '''Comoving spherical volume between zmin and zman in (Mpc/h)**3'''
+        '''Comoving spherical volume between zmin and zman in (Mpc)**3'''
+
         rmin = self.get_comoving_distance(zmin)
         rmax = self.get_comoving_distance(zmax)
         return 4*np.pi/3.*(rmax**3-rmin**3)
 
     def get_box_size(self, ra, dec, zmin=0.5, zmax=1.0):
+        ''' Provide minimum box dimensions in comoving coordinates 
+            from a list of RA and DEC 
+        '''
 
         dmin = self.get_comoving_distance(zmin)
         dmax = self.get_comoving_distance(zmax)
@@ -70,8 +126,11 @@ class CosmoSimple:
             print( np.abs(np.array(pair).min() - np.array(pair).max()))
 
     def get_growth_rate(self, z):
+        ''' Computes approximated growth-rate of structures
+            using f(z) = Omega_m(z)**0.55
+        '''
 
-        e_z = np.interp(z, self.ztab, self.E_z)
+        e_z = np.interp(z, self.z_tab, self.E_z)
         return (self.omega_m*(1+z)**3/e_z**2)**0.55
         
 class Cosmo:

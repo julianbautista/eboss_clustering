@@ -6,7 +6,7 @@ import configparser
 import os
 import numpy as np 
 import time
-from multiprocessing import Pool
+from multiprocessing import Pool, cpu_count
 from galaxy_bao_fitter import *
 from cf_tools import Multipoles
 
@@ -112,7 +112,7 @@ if 'minuit' in config:
     chi2 = Chi2(data=data, model=pk, parameters=parameters, options=options)
     chi2.fit() 
     chi2.export_bestfit_parameters(output+'.pars')
-    chi2.export_covariance(output+'.covpars')
+    #chi2.export_covariance(output+'.covpars')
     sec1 = time.time()
     tmin = (sec1-sec0)/60
     print(f'Time elapsed during fit: {tmin:.2f} minutes')
@@ -252,10 +252,12 @@ if 'mcmc' in config:
             start[:, j] = np.random.rand(nwalkers)*(limit_upp-limit_low)+limit_low
 
     if config['mcmc']['use_pool'] == 'True':
+        print('Using multiprocessing with {cpu_count()} cores')
         with Pool() as pool:
             sampler = sampling_function(nwalkers, npars, log_prob, pool=pool)
             sampler.run_mcmc(start, nsteps, progress=True)
     else:
+        print('Using a single core')
         sampler = sampling_function(nwalkers, npars, log_prob)
         sampler.run_mcmc(start, nsteps, progress=True)
 
