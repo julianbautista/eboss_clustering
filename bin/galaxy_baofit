@@ -27,19 +27,24 @@ args = parser.parse_args()
 config = configparser.ConfigParser()
 config.read(args.ini)
 
+#-- Read several options from config file (or from args if provided)
 options = {}
 for k in config['options']:
     options[k] = config['options'][k] == 'True'
 options['ell_max'] = int(config['options']['ell_max'])
-if options['fit_broadband']:
+if 'broadband' in config:
+    options['fit_broadband'] = True
     options['bb_min'] = int(config['broadband']['bb_min'])
     options['bb_max'] = int(config['broadband']['bb_max'])
+else:
+    options['fit_broadband'] = False
 options['rmin'] = float(config['cuts']['rmin']) if args.rmin is None else args.rmin
 options['rmax'] = float(config['cuts']['rmax']) if args.rmax is None else args.rmax
 options['data_name'] = config['data']['name'] if args.data_name is None else args.data_name
 options['cov_name'] = config['covariance']['name'] if args.cov_name is None else args.cov_name
 options['cov_scale_factor'] = float(config['covariance']['scalefactor']) if args.cov_scalefactor is None else args.cov_scalefactor
 options['output_root'] = config['data']['output'] if args.output is None else args.output
+
 
 print('== Galaxy BAO fitter (by Julian Bautista) ==') 
 print('')
@@ -66,7 +71,7 @@ output = ''.join([
         f'-rmin{rmin:.1f}-rmax{rmax:.1f}',
         '-bb'*(options['fit_broadband']),
         f'-ellmax{options["ell_max"]}',
-        f'-nopeak'*(options['fit_nopeak'])  
+        f'-nopeak'*(options['no_peak'])  
         ])
 output_base = os.path.basename(output)
 
@@ -198,11 +203,11 @@ if 'scan2d' in config:
     tmin = (sec5-sec4)/60
     print(f'Time elapsed during scan2d: {tmin:.2f} minutes')
 
-
+#-- Plot best-fit model
 if 'plot' in config:
     scale_r = int(config['plot']['scale_r'])
     label = label=r'$\chi^2 = %.2f$'%chi2.chi2min 
-    if options['fit_nopeak']:
+    if options['no_peak']:
         label=r'$\chi^2_{\rm no \ peak} = %.2f$'%chi2.chi2min
     fig = chi2.plot_bestfit(label=label, scale_r=scale_r)
     plt.legend(loc=0)
@@ -211,9 +216,11 @@ if 'plot' in config:
         plt.savefig(config['plot']['save'], bbox_inches='tight')
     plt.show()
 
+#-- Export best-fit model
 if 'minuit' in config:
     chi2.export_model(output+'.model')
 
+#- Perform MCMC
 if 'mcmc' in config:
     print('\nPerforming MCMC chain')
     sec_0 = time.time()

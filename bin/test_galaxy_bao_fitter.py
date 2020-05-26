@@ -3,11 +3,8 @@ import numpy as np
 import pylab as plt
 import copy
         
-def get_cosmo(z=0.75, name='challenge'):
-    cosmo = galaxy_bao_fitter.Cosmo(z=z, name=name)
-    return cosmo
 
-def test(cosmo, 
+def test(pk_file='pk_camb_z0.698_challenge.txt', 
          pars_to_test= {'at': [0.95, 1.05, 10], 
                         'ap': [0.95, 1.05, 10], 
                         'bias': [1., 3., 10], 
@@ -19,8 +16,11 @@ def test(cosmo,
                         'sigma_par': 10., 'sigma_per': 6., 
                         'sigma_s': 4., 'sigma_rec': 0.},
          rmin=1., rmax=200., scale_r=2, ell_max=4, 
-         decoupled=False, no_peak=False, 
+         decouple_peak=False, no_peak=False, 
          figsize=(12, 5), saveroot=None):
+
+    cosmo = galaxy_bao_fitter.PowerSpectrum(pk_file)
+    options = {'ell_max': ell_max, 'decouple_peak': decouple_peak, 'no_peak': no_peak}
 
     labels = {'aiso': r'$\alpha_{\rm iso}$', 
               'epsilon': r'$\epsilon$',
@@ -46,8 +46,7 @@ def test(cosmo,
         colors = plt.cm.jet(np.linspace(0, 1, len(values)))
         for i, val in enumerate(values):
             pars[par] = val
-            xi_mult = cosmo.get_xi_multipoles(r, pars, ell_max=ell_max,
-                            decoupled=decoupled, no_peak=no_peak)
+            xi_mult = cosmo.get_xi_multipoles(r, pars, options)
             for j in range(nell):
                 ax[j].plot(r, xi_mult[j]*r**scale_r, 
                            color=colors[i], lw=1,
@@ -64,64 +63,6 @@ def test(cosmo,
         fig.subplots_adjust(top=0.9)
         if not saveroot is None:
             plt.savefig(saveroot+f'{par}.pdf')
-
-    if 'aiso' in pars_to_test:
-        pars = copy.deepcopy(pars_center)
-        fig, ax = plt.subplots(nrows=1, ncols=nell, figsize=figsize)
-        xs = pars_to_test['aiso']
-        xs = np.linspace(xs[0], xs[1], xs[2])
-        colors = plt.cm.jet(np.linspace(0, 1, len(xs)))
-
-        for i, aiso in enumerate(xs):
-            pars['aiso'] = aiso#/(1+pars_center['epsilon'])
-            xi_mult = cosmo.get_xi_multipoles(r, pars, ell_max=ell_max, 
-                            decoupled=decoupled, no_peak=no_peak)
-            for j in range(nell):
-                ax[j].plot(r, xi_mult[j]*r**scale_r, 
-                           color=colors[i], lw=1, 
-                           label=r'$\alpha_{{\rm iso}} = %.2f$'%aiso)
-                ylabel = r'$\xi_{%d}$'%(j*2)
-                if scale_r:
-                    ylabel+= r'$r^%d [h^{-%d} \mathrm{Mpc}^{%d}]$'%\
-                               (scale_r, scale_r, scale_r)
-                ax[j].set_ylabel(ylabel)
-                ax[j].set_xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
-        ax[0].legend(loc=0, fontsize=10)
-        plt.suptitle(title)
-        plt.tight_layout() 
-        fig.subplots_adjust(top=0.9)
-        if not saveroot is None:
-            plt.savefig(saveroot+f'aiso.pdf')
-
-    if 'epsilon' in pars_to_test: 
-        pars = copy.deepcopy(pars_center)
-        fig, ax = plt.subplots(nrows=1, ncols=nell, figsize=figsize)
-        xs = pars_to_test['epsilon']
-        xs = np.linspace(xs[0], xs[1], xs[2])
-        colors = plt.cm.jet(np.linspace(0, 1, len(xs)))
-
-        for i, eps in enumerate(xs):
-            pars['epsilon'] = eps
-            print(pars)
-            xi_mult = cosmo.get_xi_multipoles(r, pars, ell_max=ell_max,
-                            decoupled=decoupled, no_peak=no_peak)
-            for j in range(nell):
-                ax[j].plot(r, xi_mult[j]*r**scale_r, 
-                           color=colors[i], lw=1,  
-                           label=r'$\epsilon = %.3f$'%eps)
-                ylabel = r'$\xi_{%d}$'%(j*2)
-                if scale_r:
-                    ylabel+= r'$r^%d [h^{-%d} \mathrm{Mpc}^{%d}]$'%\
-                               (scale_r, scale_r, scale_r)
-                ax[j].set_ylabel(ylabel)
-                ax[j].set_xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
-        ax[0].legend(loc=0, fontsize=10)
-        plt.suptitle(title)
-        plt.tight_layout() 
-        fig.subplots_adjust(top=0.9)
-        if not saveroot is None:
-            plt.savefig(saveroot+f'epsilon.pdf')
-
 
     plt.show()
 
