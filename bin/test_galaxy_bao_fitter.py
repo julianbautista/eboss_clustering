@@ -3,7 +3,6 @@ import numpy as np
 import pylab as plt
 import copy
         
-
 def test(pk_file='pk_camb_z0.698_challenge.txt', 
          pars_to_test= {'at': [0.95, 1.05, 10], 
                         'ap': [0.95, 1.05, 10], 
@@ -38,7 +37,6 @@ def test(pk_file='pk_camb_z0.698_challenge.txt',
     lss = ['-', '--', ':', '-.']
 
     for par in pars_to_test:
-        if par == 'aiso' or par == 'epsilon': continue
         pars = copy.deepcopy(pars_center)
         xs = pars_to_test[par]
         values = np.linspace(xs[0], xs[1], xs[2])
@@ -66,15 +64,29 @@ def test(pk_file='pk_camb_z0.698_challenge.txt',
 
     plt.show()
 
-def test_xu2012():
-    cosmo = get_cosmo(z=0.35)
-    test(  cosmo, 
-           pars_to_test = {'epsilon': [1.0201, 0.9799, 10]}, 
-           pars_center =  {'ap': 1.0, 'at': 1.0, 'bias': 2.2, 'beta': 0.35, 
+def test_xu2013():
+    ''' This function reproduces the figure 1 of Xu et al. 2013 
+        https://ui.adsabs.harvard.edu/abs/2013MNRAS.431.2834X/abstract
+    '''
+
+    #-- Linear 
+    test(   pk_file='data/pk_camb_z0.35_xu2013.txt', 
+            pars_to_test = {'epsilon': [-0.01, 0.01, 3]}, 
+            pars_center =  {'aiso': 1.0, 'epsilon': 0., 'bias': 2.2, 'beta': 0.35, 
                            'sigma_par': 0.0, 'sigma_per': .0, 'sigma_s': 0, 
-                           'sigma_rec': 0.0})
+                           'sigma_rec': 0.0},
+            decouple_peak=False)
+
+    #-- With damping
+    test(   pk_file='data/pk_camb_z0.35_xu2013.txt', 
+            pars_to_test = {'epsilon': [-0.01, 0.01, 3]}, 
+            pars_center =  {'aiso': 1.0, 'epsilon': 0., 'bias': 2.2, 'beta': 0.35, 
+                           'sigma_par': 10.0, 'sigma_per': 6.0, 'sigma_s': 4., 
+                           'sigma_rec': 0.0}, 
+            decouple_peak=False)
 
 def test_window_function():
+    ''' Do not use: this is currently broken '''
 
     cosmo = Cosmo(z=0.75) 
     cosmo.read_window_function('window_test.txt') 
@@ -94,10 +106,4 @@ def test_window_function():
         plt.plot(kout, pk_mult1[i]*kout, f'C{i}-', label=r'$\ell = {ell}$ With Window'.format(ell=ell))
     plt.legend()
     plt.ylabel(r'$k P_{\ell}(k)$')
-
-
-
-#if __name__ == '__main__':
-#    cosmo = get_cosmo()
-#    test(cosmo, saveroot='baofit_prerec_decoupled')
 

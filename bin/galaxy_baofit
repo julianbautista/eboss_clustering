@@ -23,6 +23,7 @@ parser.add_argument('--rmin', help='Minimum separation',
 parser.add_argument('--rmax', help='Maximum separation', 
                     type=float)
 parser.add_argument('--cov-scalefactor', type=float, help='Covariance matrix scale factor')
+
 args = parser.parse_args()
 config = configparser.ConfigParser()
 config.read(args.ini)

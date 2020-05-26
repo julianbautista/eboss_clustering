@@ -144,11 +144,6 @@ class Cosmo:
                                        z=z, name=name, 
                                        non_linear=non_linear, kmax=kmax, nk=nk)
 
-        #self.r, self.xi = self.get_correlation_function()
-        #self.get_sideband_scipy()
-        #self.get_sideband_power()
-        #self.set_2d_arrays(nmu=nmu)
-
     def get_matter_power_spectrum(self, camb_pars=None, z=0.0, non_linear=0, 
                                         name='challenge', norm_pk=0, 
                                         kmax=100., nk=4098):
@@ -221,6 +216,13 @@ class Cosmo:
                                    YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.0,
                                     num_massive_neutrinos=0)
                 camb_pars.InitPower.set_params(As=2.14681e-09, ns=0.96)
+            elif name == 'xu2013':
+                #-- Om=0.25, h=0.7, ns=1.0, Ob=0.04, s8=0.8
+                camb_pars.set_cosmology(H0=70, ombh2=0.0196, 
+                                   omch2=0.1029, 
+                                   YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.0,
+                                    num_massive_neutrinos=0)
+                camb_pars.InitPower.set_params(As=2.2135045586846496e-09, ns=1.)
             else: 
                 print('Error: name of cosmology should be one of the following')
                 print('challenge qpm planck outerrim ezmock')

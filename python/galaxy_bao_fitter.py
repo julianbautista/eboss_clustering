@@ -246,36 +246,36 @@ class PowerSpectrum:
             #-- Anisotropic damping applied to BAO peak only
             sigma_nl = (1-mu**2)*sigma_per**2/2+ mu**2*sigma_par**2/2 
             sigma_nl_k2 = np.outer(sigma_nl, k**2)
-            #-- Scale BAO peak part by alpha
+            #-- Scale BAO peak part by alphas
             pk2d_peak = np.interp(ak2d, k, pk-pk_sideband)
             pk2d  = pk2d_peak * np.exp(-sigma_nl_k2)
             pk2d += pk2d_nopeak
 
-        #-- Compute Kaiser redshift space distortions with reconstruction damping
+        #-- Reconstruction damping
         sigma_rec = pars['sigma_rec'] if 'sigma_rec' in pars else 0.
         if sigma_rec == 0:
             recon_damp = np.ones(k.size)
         else:
             recon_damp = 1 - np.exp(-k**2*sigma_rec**2/2) 
-        
         recon_damp_mu2 = np.outer(mu**2, recon_damp)
+
+        #-- Kaiser redshift-space distortions
         kaiser = bias * bias2 * (1+beta*recon_damp_mu2) * (1+beta2*recon_damp_mu2)
+        pk2d *= kaiser
 
         #-- Fingers of God
         if pars['sigma_s'] != 0:
             fog = 1./( 1 + 0.5*np.outer(mu**2, k**2)*pars['sigma_s']**2)
         else:
             fog = 1
+        pk2d *= fog**2 
 
         #-- This parameters is for intensity mapping only
         if 'beam' in pars:
             pk2d *= np.exp( - 0.5*pars['beam']**2*np.outer(1-mu**2, k**2)) 
         
-        pk2d *= kaiser
-        pk2d *= fog**2 
-
-        #if not decouple_peak:
-        #    pk2d_out /= (at**2*ap)
+        if not decouple_peak:
+            pk2d_peak /= (at**2*ap)
 
         return pk2d
 
