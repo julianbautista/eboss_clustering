@@ -37,6 +37,34 @@ def test(cosmo,
     nell = ell_max//2+1
     lss = ['-', '--', ':', '-.']
 
+    for par in pars_to_test:
+        if par == 'aiso' or par == 'epsilon': continue
+        pars = copy.deepcopy(pars_center)
+        xs = pars_to_test[par]
+        values = np.linspace(xs[0], xs[1], xs[2])
+        fig, ax = plt.subplots(nrows=1, ncols=nell, figsize=figsize)
+        colors = plt.cm.jet(np.linspace(0, 1, len(values)))
+        for i, val in enumerate(values):
+            pars[par] = val
+            xi_mult = cosmo.get_xi_multipoles(r, pars, ell_max=ell_max,
+                            decoupled=decoupled, no_peak=no_peak)
+            for j in range(nell):
+                ax[j].plot(r, xi_mult[j]*r**scale_r, 
+                           color=colors[i], lw=1,
+                           label=labels[par]+f' = {val:.2f}')
+                ylabel = r'$\xi_{%d}$'%(j*2)
+                if scale_r:
+                    ylabel+= r'$r^%d \ [h^{-%d}  \mathrm{Mpc}^{%d}]$'%\
+                               (scale_r, scale_r, scale_r)
+                ax[j].set_ylabel(ylabel)
+                ax[j].set_xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
+        ax[0].legend(loc=0, fontsize=10, ncol=2)
+        plt.suptitle(title)
+        plt.tight_layout() 
+        fig.subplots_adjust(top=0.9)
+        if not saveroot is None:
+            plt.savefig(saveroot+f'{par}.pdf')
+
     if 'aiso' in pars_to_test:
         pars = copy.deepcopy(pars_center)
         fig, ax = plt.subplots(nrows=1, ncols=nell, figsize=figsize)
@@ -94,33 +122,6 @@ def test(cosmo,
         if not saveroot is None:
             plt.savefig(saveroot+f'epsilon.pdf')
 
-    for par in pars_to_test:
-        if par == 'aiso' or par == 'epsilon': continue
-        pars = copy.deepcopy(pars_center)
-        xs = pars_to_test[par]
-        values = np.linspace(xs[0], xs[1], xs[2])
-        fig, ax = plt.subplots(nrows=1, ncols=nell, figsize=figsize)
-        colors = plt.cm.jet(np.linspace(0, 1, len(values)))
-        for i, val in enumerate(values):
-            pars[par] = val
-            xi_mult = cosmo.get_xi_multipoles(r, pars, ell_max=ell_max,
-                            decoupled=decoupled, no_peak=no_peak)
-            for j in range(nell):
-                ax[j].plot(r, xi_mult[j]*r**scale_r, 
-                           color=colors[i], lw=1,
-                           label=labels[par]+f' = {val:.2f}')
-                ylabel = r'$\xi_{%d}$'%(j*2)
-                if scale_r:
-                    ylabel+= r'$r^%d \ [h^{-%d}  \mathrm{Mpc}^{%d}]$'%\
-                               (scale_r, scale_r, scale_r)
-                ax[j].set_ylabel(ylabel)
-                ax[j].set_xlabel(r'$r \ [h^{-1} \mathrm{Mpc}]$')
-        ax[0].legend(loc=0, fontsize=10, ncol=2)
-        plt.suptitle(title)
-        plt.tight_layout() 
-        fig.subplots_adjust(top=0.9)
-        if not saveroot is None:
-            plt.savefig(saveroot+f'{par}.pdf')
 
     plt.show()
 

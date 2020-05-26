@@ -6,8 +6,10 @@ import configparser
 import os
 import numpy as np 
 import time
+import pylab as plt
 from multiprocessing import Pool, cpu_count
-from galaxy_bao_fitter import *
+from galaxy_bao_fitter import PowerSpectrum, Data, Chi2
+from galaxy_rsd_fitter import CLPTGS
 from cf_tools import Multipoles
 
 parser = argparse.ArgumentParser()
@@ -94,22 +96,27 @@ data = Data(m.r, m.mono, m.coss,
             quad=m.quad, hexa=m.hexa, 
             nmocks=nmocks, rmax=rmax, rmin=rmin)
 
-#-- Initialize linear power spectrum 
-if 'pk_file' in config['model']:
-    pk_file = config['model']['pk_file'] 
-    pk = PowerSpectrum(pk_file=pk_file)
-else:
-    cosmology     = config['model']['cosmology'] if args.cosmology is None else args.cosmology
-    z_eff = float(config['model']['z_eff'])
-    non_linear_pk = config['model']['non_linear_pk'] == 'True'
-    pk = PowerSpectrum(z=z_eff, name=cosmology, non_linear=non_linear_pk)
+#-- Load model: BAO or RSD?
+mod = config['model']
+if mod['fit_type'] == 'BAO':
+    if 'pk_file' in mod:
+        pk_file = mod['pk_file'] 
+        model   = PowerSpectrum(pk_file=pk_file)
+    else: 
+        cosmology  = mod['cosmology'] if args.cosmology is None else args.cosmology
+        z_eff      = float(mod['z_eff'])
+        non_lin_pk = (mod['non_linear_pk'] == 'True')
+        model = PowerSpectrum(z=z_eff, name=cosmology, non_linear=non_lin_pk)
+elif mod['fit_type'] == 'RSD':
+    model = CLPTGS(mod['xi_file'], mod['v12_file'], mod['s12_file'])
 
 
 #-- Perform fit and export
+chi2 = None
 if 'minuit' in config:
     print('\nStarting chi2 minimization with iMinuit')
     sec0 = time.time()
-    chi2 = Chi2(data=data, model=pk, parameters=parameters, options=options)
+    chi2 = Chi2(data=data, model=model, parameters=parameters, options=options)
     chi2.fit() 
     chi2.export_bestfit_parameters(output+'.pars')
     #chi2.export_covariance(output+'.covpars')
@@ -225,11 +232,9 @@ if 'mcmc' in config:
     nsteps = int(config['mcmc']['nsteps'])
     nwalkers = int(config['mcmc']['nwalkers'])
 
-
-
-
-    chi2 = Chi2(data=data, model=pk, parameters=parameters, options=options)
-    chi2.fit()
+    if chi2 is None:
+        chi2 = Chi2(data=data, model=model, parameters=parameters, options=options)
+        chi2.fit()
 
     def log_prob(p):
         return chi2.log_prob(p)
@@ -252,7 +257,7 @@ if 'mcmc' in config:
             start[:, j] = np.random.rand(nwalkers)*(limit_upp-limit_low)+limit_low
 
     if config['mcmc']['use_pool'] == 'True':
-        print('Using multiprocessing with {cpu_count()} cores')
+        print(f'Using multiprocessing with {cpu_count()} cores')
         with Pool() as pool:
             sampler = sampling_function(nwalkers, npars, log_prob, pool=pool)
             sampler.run_mcmc(start, nsteps, progress=True)
@@ -260,6 +265,9 @@ if 'mcmc' in config:
         print('Using a single core')
         sampler = sampling_function(nwalkers, npars, log_prob)
         sampler.run_mcmc(start, nsteps, progress=True)
+
+    if config['mcmc']['sampler'] == 'zeus':
+        sampler.summary
 
     chain = sampler.get_chain(flat=True)
     np.savetxt(output+f".chain_{name_sampler}", chain)

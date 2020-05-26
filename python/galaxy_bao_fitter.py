@@ -1,5 +1,4 @@
 from __future__ import print_function
-import camb
 import numpy as np
 import pylab as plt
 import fftlog
@@ -167,7 +166,7 @@ class PowerSpectrum:
         self.mu2d = np.outer(self.mu, np.ones(self.k.size))
         self.k2d  = np.outer(np.ones(nmu), self.k)
 
-    def get_2d_power_spectrum(self, pars, no_peak=False, decoupled=False):
+    def get_2d_power_spectrum(self, pars, no_peak=False, decouple_peak=False):
         ''' Compute P(k, mu) for a set of parameters and
             pk, pk_sideband
         Input
@@ -234,10 +233,9 @@ class PowerSpectrum:
         ak2d = k2d/at * np.sqrt( 1 + mu2d**2 * (1/F**2 - 1) )
         #amu  = mu/F   / np.sqrt( 1 + mu**2   * (1/F**2 - 1) )
 
-
         #-- Sideband model (no BAO peak)
-        #-- If decoupled, do not scale sideband by alpha
-        if decoupled:
+        #-- If decouple_peak ==  True, do not scale sideband by alpha
+        if decouple_peak:
             pk2d_nopeak = np.outer(np.ones_like(mu), pk_sideband)
         else:
             pk2d_nopeak = np.interp(ak2d, k, pk_sideband)
@@ -276,7 +274,7 @@ class PowerSpectrum:
         pk2d *= kaiser
         pk2d *= fog**2 
 
-        #if not decoupled:
+        #if not decouple_peak:
         #    pk2d_out /= (at**2*ap)
 
         return pk2d
@@ -347,44 +345,47 @@ class PowerSpectrum:
         pk_mult = np.array(pk_mult)
         return k, pk_mult
 
-    def get_xi_multipoles(self, rout, pars, 
-        ell_max=4, decoupled=False, no_peak=False, r0=1.):
+    def get_xi_multipoles(self, rout, pars, options=None):
         """ Compute \\xi_\\ell(r) from a set of parameters
+            This is the function used in the class Chi2
+
         Input
         -----
         rout (np.array): contains the separation values in Mpc/h
         pars (dict): contains the parameters required for P(k, \\mu) 
-
+        options (dict): contains options for the calculation including
+                        ell_max, no_peak, decouple_peak
         Output
         -----
         xi_mult (np.array): array with shape (n_ell, rout.size) with the \\xi_\\ell(r)
         """
+
         pk2d = self.get_2d_power_spectrum(pars, 
-                                          no_peak = no_peak, 
-                                          decoupled = decoupled)
-        pk_mult = self.get_multipoles(self.mu, pk2d, ell_max=ell_max)
+                                          no_peak = options['no_peak'], 
+                                          decouple_peak = options['decouple_peak'])
+        pk_mult = self.get_multipoles(self.mu, pk2d, ell_max=options['ell_max'])
         _, xi_mult = self.get_xi_multipoles_from_pk(self.k, pk_mult, 
-                                                    output_r=rout, r0=r0)
+                                                    output_r=rout, r0=1.)
         return xi_mult
 
-    def get_pk_multipoles(self, kout, pars, 
-        ell_max=4, decoupled=False, no_peak=False, r0=1., apply_window=False):
+    def get_pk_multipoles(self, kout, pars, options):
         ''' Compute P_\ell(k) from a set of parameters
         Input
         -----
         kout (np.array): contains the wavevector values in h/Mpc
         pars (dict): contains the parameters required for P(k, \mu) 
-
+        options (dict): contains options for the calculation including
+                        ell_max, no_peak, decouple_peak, apply_window
         Output
         -----
         pk_mult_out (np.array): array with shape (n_ell, kout.size) with the P_\ell(k)
         '''
         pk2d = self.get_2d_power_spectrum(pars, 
-                                          no_peak = no_peak, 
-                                          decoupled = decoupled)
-        pk_mult = self.get_multipoles(self.mu, pk2d, ell_max=ell_max)
+                                          no_peak =options['no_peak'], 
+                                          decouple_peak = option['decouple_peak'])
+        pk_mult = self.get_multipoles(self.mu, pk2d, ell_max=options['ell_max'])
 
-        if apply_window:
+        if options['apply_window']:
             _, xi_mult = self.get_xi_multipoles_from_pk(self.k, pk_mult, output_r=self.r) 
             xi_convol = self.get_convoled_xi(xi_mult, self.window_mult)
             _, pk_mult_out = self.get_pk_multipoles_from_xi(self.r, xi_convol, output_k=kout)
@@ -429,8 +430,8 @@ class PowerSpectrum:
     
 class Data: 
 
-    def __init__(self, r, mono, coss, quad=None, hexa=None, rmin=40., rmax=180., \
-                    nmocks=None):
+    def __init__(self, r, mono, coss, quad=None, hexa=None, 
+                 rmin=40., rmax=180., nmocks=None):
 
         cf = mono
         rr = r
@@ -464,6 +465,10 @@ class Data:
         coss = coss[:, w]
         coss = coss[w, :]
         
+        print(f' After cutting {rmin:.1f} < r < {rmax:.1f}:')
+        print(' Size cf:', cf.size)
+        print(' Size cov:', coss.shape[0])
+
         self.rr = rr
         self.r = np.unique(rr)
         self.cf = cf
@@ -482,16 +487,15 @@ class Chi2:
         self.model = model
         self.parameters = parameters
         self.options = options
-        self.setup_broadband_H()
+        if options['fit_broadband']:
+            self.setup_broadband_H()
+        self.best_pars = None
         #print(parameters)
 
     def get_model(self, r, pars=None):
         if pars is None:
             pars = self.best_pars
-        model = self.model.get_xi_multipoles(r, pars, 
-            ell_max  =self.options['ell_max'], 
-            decoupled=self.options['decouple_peak'], 
-            no_peak  =self.options['fit_nopeak'])
+        model = self.model.get_xi_multipoles(r, pars, self.options)
         return model.ravel()
     
     def setup_broadband_H(self, r=None, bb_min=None, bb_max=None):
@@ -625,7 +629,7 @@ class Chi2:
         #mig.hesse()
         print('\nApproximate correlation coefficients:')
         print(mig.matrix(correlation=True))
-        #self.mig = mig
+        self.mig = mig
         #self.imin = imin
         self.is_valid = imin[0]['is_valid']
         self.best_pars = best_pars
@@ -654,12 +658,10 @@ class Chi2:
 
     def plot_bestfit(self, fig=None, model_only=0, scale_r=2, label=None, figsize=(10, 4)):
 
-        data = self.data
-        model = self.model
         nmul = self.options['ell_max']//2+1
-        r = data.r
-        cf = data.cf
-        dcf = np.sqrt(np.diag(data.coss))
+        r = self.data.r*1
+        cf = self.data.cf*1
+        dcf = np.sqrt(np.diag(self.data.coss*1))
         r_model = np.linspace(r.min(), r.max(), 200)
         pars = {par: self.best_pars[par]['value'] for par in self.best_pars}
         cf_model = self.get_model(r_model, pars)

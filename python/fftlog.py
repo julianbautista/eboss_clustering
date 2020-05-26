@@ -2,7 +2,8 @@ import numpy as np
 import sys
 from scipy.special import gamma
 from scipy.interpolate import RegularGridInterpolator
-import numpy.fft as fft
+#import scipy.fftpack as fft
+import pyfftw.interfaces.scipy_fftpack as fft
 import time
 
 def extrap(x, xp, yp):
