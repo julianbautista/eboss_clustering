@@ -207,9 +207,8 @@ if 'scan2d' in config:
 #-- Plot best-fit model
 if 'plot' in config:
     scale_r = int(config['plot']['scale_r'])
-    label = label=r'$\chi^2 = %.2f$'%chi2.chi2min 
-    if options['no_peak']:
-        label=r'$\chi^2_{\rm no \ peak} = %.2f$'%chi2.chi2min
+    label = r'$\chi^2/{\rm dof}$ = '
+    label += f'{chi2.chi2min:.1f}/({chi2.ndata}-{chi2.npars}) = {chi2.rchi2min:.2f}' 
     fig = chi2.plot_bestfit(label=label, scale_r=scale_r)
     plt.legend(loc=0)
     plt.tight_layout()
