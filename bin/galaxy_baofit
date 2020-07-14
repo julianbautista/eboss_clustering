@@ -119,16 +119,15 @@ elif mod['fit_type'] == 'RSD':
 
 #-- Perform fit and export
 chi2 = None
-if 'minuit' in config:
-    print('\nStarting chi2 minimization with iMinuit')
-    sec0 = time.time()
-    chi2 = Chi2(data=data, model=model, parameters=parameters, options=options)
-    chi2.fit() 
-    chi2.export_bestfit_parameters(output+'.pars')
-    #chi2.export_covariance(output+'.covpars')
-    sec1 = time.time()
-    tmin = (sec1-sec0)/60
-    print(f'Time elapsed during fit: {tmin:.2f} minutes')
+print('\nStarting chi2 minimization with iMinuit')
+sec0 = time.time()
+chi2 = Chi2(data=data, model=model, parameters=parameters, options=options)
+chi2.fit() 
+chi2.export_bestfit_parameters(output+'.pars')
+#chi2.export_covariance(output+'.covpars')
+sec1 = time.time()
+tmin = (sec1-sec0)/60
+print(f'Time elapsed during fit: {tmin:.2f} minutes')
 
 #-- Get assymetric error bars
 if 'minos' in config:

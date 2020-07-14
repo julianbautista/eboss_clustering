@@ -244,11 +244,11 @@ class PowerSpectrum:
             pk2d = pk2d_nopeak 
         else:
             #-- Anisotropic damping applied to BAO peak only
-            sigma_nl = (1-mu**2)*sigma_per**2/2+ mu**2*sigma_par**2/2 
+            sigma_nl = (1-mu**2)*sigma_per**2+ mu**2*sigma_par**2 
             sigma_nl_k2 = np.outer(sigma_nl, k**2)
             #-- Scale BAO peak part by alphas
             pk2d_peak = np.interp(ak2d, k, pk-pk_sideband)
-            pk2d  = pk2d_peak * np.exp(-sigma_nl_k2)
+            pk2d  = pk2d_peak * np.exp(-0.5*sigma_nl_k2)
             pk2d += pk2d_nopeak
 
         #-- Reconstruction damping
@@ -256,7 +256,7 @@ class PowerSpectrum:
         if sigma_rec == 0:
             recon_damp = np.ones(k.size)
         else:
-            recon_damp = 1 - np.exp(-k**2*sigma_rec**2/2) 
+            recon_damp = 1 - np.exp(-0.5*k**2*sigma_rec**2) 
         recon_damp_mu2 = np.outer(mu**2, recon_damp)
 
         #-- Kaiser redshift-space distortions
@@ -499,6 +499,9 @@ class Chi2:
         return model.ravel()
     
     def setup_broadband_H(self, r=None, bb_min=None, bb_max=None):
+        ''' Setup analytical solution for best-fit polynomial nuisance terms
+	        http://pdg.lbl.gov/2016/reviews/rpp2016-rev-statistics.pdf eq. 39.22 and surrounding
+        '''
         if r is None:
             r = self.data.rr
         if bb_min is None:

@@ -81,7 +81,7 @@ class CosmoSimple:
     def get_DH(self, z):
         '''Hubble distance c/H(z) in Mpc '''
 
-        D_H = self.c/self.get_hubble(z)
+        D_H = self.pars['c']/self.get_hubble(z)
         return D_H
 
     def get_DV(self, z):
@@ -166,6 +166,16 @@ class Cosmo:
                                     omch2=0.13729646, 
                                     YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
                 camb_pars.InitPower.set_params(As=2.0406217009089533e-09, ns=0.97)
+            elif name == 'om0.22':
+                camb_pars.set_cosmology(H0=67.6, ombh2=0.0220,  
+                                    omch2=0.07788958160106182, 
+                                    YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
+                camb_pars.InitPower.set_params(As=2.0406217009089533e-09, ns=0.97)
+            elif name == 'om0.26':
+                camb_pars.set_cosmology(H0=67.6, ombh2=0.0220,  
+                                    omch2=0.09616862160106183, 
+                                    YHe=0.24, TCMB=2.7255, nnu=3.046, mnu=0.06)
+                camb_pars.InitPower.set_params(As=2.0406217009089533e-09, ns=0.97)
             elif name == 'challenge_omegab1':
                 camb_pars.set_cosmology(H0=67.6, ombh2=0.0240,
                                    omch2=0.11701745,
@@ -229,9 +239,11 @@ class Cosmo:
                 sys.exit(0)
 
         camb_pars.set_dark_energy()
-        
+        #camb_pars.set_accuracy(AccuracyBoost=3, lAccuracyBoost=3)
+
         #-- compute power spectrum
-        camb_pars.set_matter_power(redshifts=[z], kmax=2*kmax, k_per_logint=None)
+        camb_pars.set_matter_power(redshifts=[z], kmax=2*kmax, k_per_logint=None,
+                                    accurate_massive_neutrino_transfers=True)
 
         #-- set non-linear power spectrum
         if non_linear:
@@ -255,7 +267,7 @@ class Cosmo:
         pars['Omega_de'] = results.omega_de
         pars['Omega_nu'] = camb_pars.omeganu  
         pars['N_eff'] = camb_pars.N_eff
-        pars['mass_neutrinos'] = 0.06*(pars['Omega_nu'] > 0)
+        pars['mass_neutrinos'] = camb_pars.omeganu*93.0033*(camb_pars.H0/100)**2 
         pars['n_s'] = camb_pars.InitPower.ns
         pars['A_s'] = camb_pars.InitPower.As
         pars['H_z'] = results.hubble_parameter(z[0])
