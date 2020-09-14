@@ -36,6 +36,7 @@ python setup.py build_ext --inplace
 
 If the python/ folder is in your $PYTHONPATH, you should be ready to go. 
 
+Look at `bin/do_recon.py` to use it.
 
 
 
