@@ -8,9 +8,8 @@ import numpy as np
 import time
 import pylab as plt
 from multiprocessing import Pool, cpu_count
-from galaxy_bao_fitter import PowerSpectrum, Data, Chi2
-from galaxy_rsd_fitter import CLPTGS
 from cf_tools import Multipoles
+from galaxy_bao_fitter import Data, Chi2
 
 parser = argparse.ArgumentParser()
 parser.add_argument('ini', help='Configuration file for fit')
@@ -105,6 +104,7 @@ data = Data(m.r, m.mono, m.coss,
 #-- Load model: BAO or RSD?
 mod = config['model']
 if mod['fit_type'] == 'BAO':
+    from galaxy_bao_fitter import PowerSpectrum
     if 'pk_file' in mod:
         pk_file = mod['pk_file'] 
         model   = PowerSpectrum(pk_file=pk_file)
@@ -114,6 +114,7 @@ if mod['fit_type'] == 'BAO':
         non_lin_pk = (mod['non_linear_pk'] == 'True')
         model = PowerSpectrum(z=z_eff, name=cosmology, non_linear=non_lin_pk)
 elif mod['fit_type'] == 'RSD':
+    from galaxy_rsd_fitter import CLPTGS
     model = CLPTGS(mod['xi_file'], mod['v12_file'], mod['s12_file'])
 
 
