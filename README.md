@@ -1,8 +1,8 @@
-# eboss_clustering
-
 This repository contains the BAO fitter and reconstruction algorithm used in
 the latest eBOSS cosmological results using the Luminous Red Galaxy sample 
 (Bautista et al. 2020, https://arxiv.org/abs/2007.08993).
+
+Please cite the reference above if using this code. 
 
 # Installing
 
