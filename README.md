@@ -1,18 +1,12 @@
 # eboss_clustering
-Repo containing code to:
+This repository contains the BAO fitter and reconstruction algorithm used in
+the latest eBOSS cosmological results using the Luminous Red Galaxy sample 
+(Bautista et al. 2020, https://arxiv.org/abs/2007.08993).
 
-- generate large-scale structure catalogs for eBOSS: ebosscat.py
-- compute systematic weights using multi-linear regression: systematics.py
-- compute spectroscopic completeness model: eff_model.py
-- fit BAO on galaxy correlation function: galaxy_bao_fitter.py
-- reconstruction algorithm based on Burden et al. 2015 : recon.py 
-
-Requirements:
+Some requirements:
 
 - camb 
 - astropy 
-- healpy 
-- mangle 3.2 (for catalog generation only)
 - iminuit (for BAO fitter only)
 - pyfftw (for reconstruction only)
 - cython (for reconstruction only)
