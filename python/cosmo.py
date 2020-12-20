@@ -1,3 +1,4 @@
+from functools import WRAPPER_ASSIGNMENTS
 import numpy as np
 import sys
 import scipy.integrate
@@ -16,6 +17,7 @@ class CosmoSimple:
         #-- For T_CMB = 2.7255 Kelvin
         omega_photon = 2.4728018939788232e-05 / h**2
         omega_nu = mass_neutrinos/93.0033/h**2
+        #-- Assume one massive neutrino if mass_neutrinos > 0
         n_massless_neutrinos = n_eff - n_eff/3*(mass_neutrinos>0)
         omega_r = omega_photon*(1 + 7/8*n_massless_neutrinos*(4/11)**(4/3))
         if flat:
@@ -25,24 +27,7 @@ class CosmoSimple:
             omega_k = 1 - omega_de - omega_m - omega_r
 
         z_tab = np.linspace(0., zmax, nz)
-        a_tab = 10**np.linspace(-10, 0., nz)
-        #z_tab = 1/a_tab - 1
-        
-        #-- Comoving distance table
-        #r_tab = np.zeros(z_tab.size) 
-        #for i in range(1, z_tab.size):
-        #    r_tab[i] = np.trapz(c/h/100/E_z[:i+1], x=z_tab[:i+1])
-
-        #-- Growth factor
-        #-- D(a) = 2.5 \Omega_m0 E(a) \int_0^a da'/(aE(a))^3
-        #growth_factor_tab = np.zeros(z_tab.size)
-        #for i in range(1, z_tab.size):
-        #    growth_factor_tab[i] = np.trapz(-(1+z_tab[:i+1])/(E_z[:i+1])**3, x=z_tab[:i+1])
-        #growth_factor_tab *= 2.5*omega_m*E_z 
-
-        #-- Growth rate
-        #-- f(a) = d[ln D(a)]/d[ln a] = a/D(a) * dD(a)/da = -(1+z)/D(z) * dD(z)/dz 
-        #growth_rate_tab = -(1+z_tab)/growth_factor_tab*np.gradient(growth_factor_tab)
+        a_tab = 10**np.linspace(-5, 0., nz)
 
         pars = {}
         pars['h'] = h
@@ -64,6 +49,7 @@ class CosmoSimple:
         self.r_tab = None  
         self.growth_factor_tab = None
         self.growth_rate_tab = None
+        self.time_tab = None
 
     def get_hubble_dimensionless(self, z):
         p = self.pars
@@ -152,6 +138,31 @@ class CosmoSimple:
     def get_redshift(self, r):
         '''Get redshift from comoving distance in Mpc/h units'''
         return np.interp(r, self.r_tab, self.z_tab)
+
+    def init_time(self):
+        ''' Initiate the time since Big Bang in years
+        '''
+        a = self.a_tab
+        h_a = self.get_hubble(1/a-1)
+        time_tab = np.zeros_like(a)
+        for i in range(1, a.size):
+            time_tab[i] = np.trapz(1/a[:i+1]/h_a[:i+1], x=a[:i+1])
+        #-- Convert 1/(km/s/Mpc) to years
+        factor = 1/(1e3/3.086e16/1e6)/60/60/24/365.25
+        self.time_tab = time_tab*factor
+
+    def get_age(self, z):
+        ''' Age of the Universe at a given redshift in years
+        '''
+        a = 1/(1+z)
+        if self.time_tab is None:
+            self.init_time()
+        return np.interp(a, self.a_tab, self.time_tab)
+
+    def get_lookback_time(self, z):
+        ''' Lookback time at a give redshift in years 
+        '''
+        return self.get_age(0)-self.get_age(z)
 
     def shell_vol(self, zmin, zmax):
         '''Comoving spherical volume between zmin and zman in (Mpc)**3'''
