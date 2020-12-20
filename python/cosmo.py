@@ -1,12 +1,16 @@
 import numpy as np
-import camb
 import sys
+import scipy.integrate
 
 #-- cosmology
 class CosmoSimple:
+    ''' This class perform basic background calculations of
+        expansion rates, distances, growth-rates
+    '''
 
-    def __init__(self, omega_m=0.31, flat=True, omega_de=0, h=0.676, 
-                mass_neutrinos=0.06, n_eff=3.046, zmax=5., nz=10000):
+    def __init__(self, omega_m=0.31, flat=True, omega_de=0, w_de=-1., 
+                 w_de_prime=0., h=0.676, mass_neutrinos=0.06, 
+                 n_eff=3.046, zmax=5., nz=10000):
 
         c = 299792.458 #km/s
         #-- For T_CMB = 2.7255 Kelvin
@@ -21,13 +25,24 @@ class CosmoSimple:
             omega_k = 1 - omega_de - omega_m - omega_r
 
         z_tab = np.linspace(0., zmax, nz)
-        #-- Dimensionless Hubble expansion rate
-        E_z = np.sqrt(omega_de + omega_m*(1+z_tab)**3 + omega_r*(1+z_tab)**4 + omega_k*(1+z_tab)**2)
+        a_tab = 10**np.linspace(-10, 0., nz)
+        #z_tab = 1/a_tab - 1
         
         #-- Comoving distance table
-        r_tab = np.zeros(z_tab.size) 
-        for i in range(1, z_tab.size):
-            r_tab[i] = np.trapz(c/h/100/E_z[:i+1], x=z_tab[:i+1])
+        #r_tab = np.zeros(z_tab.size) 
+        #for i in range(1, z_tab.size):
+        #    r_tab[i] = np.trapz(c/h/100/E_z[:i+1], x=z_tab[:i+1])
+
+        #-- Growth factor
+        #-- D(a) = 2.5 \Omega_m0 E(a) \int_0^a da'/(aE(a))^3
+        #growth_factor_tab = np.zeros(z_tab.size)
+        #for i in range(1, z_tab.size):
+        #    growth_factor_tab[i] = np.trapz(-(1+z_tab[:i+1])/(E_z[:i+1])**3, x=z_tab[:i+1])
+        #growth_factor_tab *= 2.5*omega_m*E_z 
+
+        #-- Growth rate
+        #-- f(a) = d[ln D(a)]/d[ln a] = a/D(a) * dD(a)/da = -(1+z)/D(z) * dD(z)/dz 
+        #growth_rate_tab = -(1+z_tab)/growth_factor_tab*np.gradient(growth_factor_tab)
 
         pars = {}
         pars['h'] = h
@@ -37,29 +52,63 @@ class CosmoSimple:
         pars['omega_ph'] = omega_photon
         pars['omega_m'] = omega_m
         pars['omega_de'] = omega_de
+        pars['omega_r'] = omega_r
+        pars['w_de'] = w_de
+        pars['w_de_prime'] = w_de_prime
         pars['mass_neutrinos'] = mass_neutrinos
         pars['N_eff'] = n_eff
-        self.flat = flat
+        pars['flat'] = flat
         self.pars = pars
         self.z_tab = z_tab
-        self.r_tab = r_tab 
-        self.E_z = E_z
+        self.a_tab = a_tab
+        self.r_tab = None  
+        self.growth_factor_tab = None
+        self.growth_rate_tab = None
+
+    def get_hubble_dimensionless(self, z):
+        p = self.pars
+        return np.sqrt(p['omega_de']*(1+z)**(3*(1+p['w_de']+p['w_de_prime'])) * 
+                       np.exp(-3*z/(1+z)*p['w_de_prime'])  
+                       + p['omega_m']*(1+z)**3 
+                       + p['omega_r']*(1+z)**4 
+                       + p['omega_k']*(1+z)**2)
 
     def get_hubble(self, z):
         '''Hubble rate in km/s/Mpc'''
         H0 = self.pars['h']*100
-        return np.interp(z, self.z_tab, self.E_z)*H0
+        return H0*self.get_hubble_dimensionless(z)
+
+    def init_comoving_distance(self):
+        ''' Initiate the comoving distance table for interpolation
+            which is faster for lots of objects than integrating
+            (though integrating is faster for few objects and 
+            different cosmologies)
+        '''
+        dh = self.pars['c']/self.pars['h']/100
+        z = self.z_tab
+        e_z = self.get_hubble_dimensionless(z)
+        #f = lambda x: 1/self.get_hubble_dimensionless(x)
+        #r_tab = [scipy.integrate.quad(f, 0, zi)[0] for zi in z]
+        r_tab = np.zeros(z.size) 
+        for i in range(1, z.size):
+            r_tab[i] = np.trapz(dh/e_z[:i+1], x=z[:i+1])
+        self.r_tab = r_tab
 
     def get_comoving_distance(self, z):
-        '''Comoving distance in Mpc '''
-
+        '''Comoving distance in Mpc units (not divided by h)'''
+        #dh = self.pars['c']/self.pars['h']/100
+        #f = lambda x: 1/self.get_hubble_dimensionless(x)
+        #r_tab = [scipy.integrate.quad(f, 0, zi)[0] for zi in z]
+        #return dh*np.array(r_tab)
+        if self.r_tab is None:
+            self.init_comoving_distance()
         return np.interp(z, self.z_tab, self.r_tab)
 
     def get_transverse_comoving_distance(self, z):
-        '''Transverse comoving distance, including non-flat cosmologies''' 
-
+        '''Transverse comoving distance, including non-flat cosmologies
+            in Mpc units (not divided by h)''' 
         r = self.get_comoving_distance(z)
-        if self.flat:
+        if self.pars['flat']:
             return r
         else:
             dh = self.pars['c']/self.pars['h']/100
@@ -68,33 +117,40 @@ class CosmoSimple:
 
     def get_DM(self, z):
         '''Comoving angular diameter distance in Mpc '''
-
         D_M = self.get_transverse_comoving_distance(z)
         return D_M
 
     def get_DA(self, z):
         '''Angular diameter distance in Mpc'''
-
         D_A = self.get_transverse_comoving_distance(z)/(1+z)
         return D_A
 
     def get_DH(self, z):
         '''Hubble distance c/H(z) in Mpc '''
-
         D_H = self.pars['c']/self.get_hubble(z)
         return D_H
 
     def get_DV(self, z):
         ''' Get spherically averaged distance D_V(z) = (c*z*D_M**2/H)**(1/3) in Mpc'''
-
         D_M = self.get_DM(z)
         D_H = self.get_DH(z)
         D_V = (z*D_M**2*D_H)**(1/3)
         return D_V
 
+    def get_DL(self, z):
+        ''' Get luminosity distance D_L(z) = (1+z)^2 D_A '''
+        D_L = (1+z)*self.get_transverse_comoving_distance(z)
+        return D_L
+    
+    def get_distance_modulus(self, z):
+        ''' Get distance modulus mu = 5*log10(D_L/[10pc]) '''
+        D_L = self.get_DL(z)
+        #-- D_L is in Mpc units, so we have 10^6 pc / 10 pc = 10^5 inside the log10
+        mu = 5*np.log10( D_L ) + 25 
+        return mu
+
     def get_redshift(self, r):
         '''Get redshift from comoving distance in Mpc/h units'''
-
         return np.interp(r, self.r_tab, self.z_tab)
 
     def shell_vol(self, zmin, zmax):
@@ -125,15 +181,71 @@ class CosmoSimple:
         for pair in [[xmin, xmax], [ymin, ymax], [zmin, zmax]]:
             print( np.abs(np.array(pair).min() - np.array(pair).max()))
 
-    def get_growth_rate(self, z):
+    def get_growth_rate_approx(self, z, gamma=0.55):
         ''' Computes approximated growth-rate of structures
             using f(z) = Omega_m(z)**0.55
         '''
-
-        e_z = np.interp(z, self.z_tab, self.E_z)
-        return (self.omega_m*(1+z)**3/e_z**2)**0.55
         
+        e_z = self.get_hubble_dimensionless(z) 
+        return (self.pars['omega_m']*(1+z)**3/e_z**2)**gamma
+    
+    def init_growth(self):
+        ''' Initiate the vector with the growth factor 
+            Warning: this implementation is only valid
+                     if dark-energy is a cosmological constant
+                     and it neglects the effect of massive neutrinos
+                     c.f. Modern Cosmology by Dodelson & Schmidt 2020 section 8.5
+        '''
+        a = self.a_tab
+        omega_m = self.pars['omega_m']
+        growth_tab = np.zeros_like(a)
+        z = 1/a-1
+        e_a = self.get_hubble_dimensionless(z)
+        integrand = 1/(a*e_a)**3
+        for i in range(1, a.size):
+            growth_tab[i] = np.trapz(integrand[:i+1], x=a[:i+1])
+        growth_tab[0] = growth_tab[1] 
+        
+        #-- Normalization following Hamilton 2001
+        growth_tab *= 2.5 * omega_m * e_a
+        #-- Normalization assuming D(a=1) = 1
+        growth_tab /= growth_tab[-1]
+        self.growth_factor_tab =  growth_tab
+        self.growth_rate_tab = a / growth_tab * np.gradient(growth_tab, a, edge_order=2)
+
+    def get_growth_factor(self, z):
+        ''' Computes growth factor 
+            using 
+            D(a) = 2.5 \Omega_m0 E(a) \int_0^a da'/(aE(a))^3
+        '''
+        if self.growth_factor_tab is None:
+            self.init_growth()
+        a = 1/(1+z)
+        return np.interp(a, self.a_tab, self.growth_factor_tab)
+
+    def get_growth_rate(self, z):
+        ''' Computes exact growth-rate of structures 
+            using 
+            D(a) = 2.5 \Omega_m0 E(a)/a \int_0^a da'/(aE(a))^3
+            f(a) = d[ln D(a)]/d[ln a] = a/D(a) * dD(a)/da
+        '''
+        if self.growth_rate_tab is None:
+            self.init_growth()
+        a = 1/(1+z)
+        return np.interp(a, self.a_tab, self.growth_rate_tab)
+    
+    def get_fsigma8(self, z, sigma8):
+        ''' Computes growth-rate times the normalization of the 
+            linear power spectrum at a given redshift 
+        '''
+        sigma8_z = sigma8*self.get_growth_factor(z)
+        f = self.get_growth_rate(z)
+        return f*sigma8_z
+
+
 class Cosmo:
+    ''' This class uses camb to compute the matter power spectrum 
+    '''
 
     def __init__(self, camb_pars=None,
                  z=0.0, name='challenge',  
@@ -147,7 +259,7 @@ class Cosmo:
     def get_matter_power_spectrum(self, camb_pars=None, z=0.0, non_linear=0, 
                                         name='challenge', norm_pk=0, 
                                         kmax=100., nk=4098):
-
+        import camb
         #-- to set sigma8 value, scale As by the square of ratio of sigma8
         if camb_pars is None:
             camb_pars = camb.CAMBparams()
@@ -280,8 +392,8 @@ class Cosmo:
         pars['DH_rd'] = pars['D_H']/pars['r_drag']
         pars['DV_rd'] = pars['D_V']/pars['r_drag']
         pars['sigma8'] = results.get_sigma8()[0]
-        pars['fsigma_8'] = results.get_fsigma8()[0]
-        pars['f'] = pars['fsigma_8']/pars['sigma8']
+        pars['fsigma8'] = results.get_fsigma8()[0]
+        pars['f'] = pars['fsigma8']/pars['sigma8']
 
         self.camb_pars = camb_pars
         self.camb_results = results
