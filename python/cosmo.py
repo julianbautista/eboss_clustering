@@ -27,7 +27,7 @@ class CosmoSimple:
             omega_k = 1 - omega_de - omega_m - omega_r
 
         z_tab = np.linspace(0., zmax, nz)
-        a_tab = 10**np.linspace(-5, 0., nz)
+        a_tab = 10**np.linspace(-10, 0., nz)
 
         pars = {}
         pars['h'] = h
@@ -136,7 +136,9 @@ class CosmoSimple:
         return mu
 
     def get_redshift(self, r):
-        '''Get redshift from comoving distance in Mpc/h units'''
+        '''Get redshift from comoving distance in Mpc units'''
+        if self.r_tab is None:
+            self.init_comoving_distance()
         return np.interp(r, self.r_tab, self.z_tab)
 
     def init_time(self):
